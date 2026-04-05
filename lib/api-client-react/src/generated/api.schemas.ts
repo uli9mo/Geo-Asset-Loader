@@ -13,28 +13,40 @@ export interface CountryList {
   countries: string[];
 }
 
-export interface DistanceResult {
-  /** Name of the first country as found in the dataset */
-  countryA: string;
-  /** Name of the second country as found in the dataset */
-  countryB: string;
-  /** Shortest border distance in kilometers (0 if they share a border) */
+export interface CountryMatch {
+  /** Country name */
+  name: string;
+  /** Actual border distance in km */
   distanceKm: number;
-  /** True if the countries share a border */
+  /** True if sharing a border */
   touching: boolean;
+}
+
+export interface NearbyResult {
+  /** Resolved name of the source country */
+  sourceCountry: string;
+  /** The requested distance in km */
+  targetKm: number;
+  /** The tolerance used in km */
+  tolerance: number;
+  matches: CountryMatch[];
 }
 
 export interface ErrorResponse {
   error: string;
 }
 
-export type GetCountryDistanceParams = {
+export type GetCountriesNearbyParams = {
   /**
-   * Name of the first country
+   * Name of the source country
    */
-  countryA: string;
+  country: string;
   /**
-   * Name of the second country
+   * Target distance in kilometers
    */
-  countryB: string;
+  km: number;
+  /**
+   * Tolerance in km (default 50). Countries within km ± tolerance are returned.
+   */
+  tolerance?: number;
 };

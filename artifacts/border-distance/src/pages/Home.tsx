@@ -1,246 +1,268 @@
-import React, { useState, useEffect } from "react";
-import { Map, ArrowRightLeft, Route as RouteIcon, Earth, Globe, MapPin, Navigation } from "lucide-react";
+import { useState, useRef, useCallback } from "react";
+import { Search, Globe, MapPin, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useGetCountryDistance, getGetCountryDistanceQueryKey } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { CountryCombobox } from "@/components/CountryCombobox";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useGetCountriesNearby, getGetCountriesNearbyQueryKey } from "@workspace/api-client-react";
+
+function parseInput(raw: string): { country: string; km: number } | null {
+  const trimmed = raw.trim();
+  // Match everything before the last number (to allow multi-word country names)
+  const match = trimmed.match(/^(.+?)\s+(\d+(?:\.\d+)?)$/);
+  if (!match) return null;
+  const country = match[1].trim();
+  const km = parseFloat(match[2]);
+  if (!country || isNaN(km) || km < 0) return null;
+  return { country, km };
+}
 
 export default function Home() {
-  const [countryA, setCountryA] = useState("");
-  const [countryB, setCountryB] = useState("");
-  const [isCalculated, setIsCalculated] = useState(false);
-  const queryClient = useQueryClient();
+  const [inputValue, setInputValue] = useState("");
+  const [query, setQuery] = useState<{ country: string; km: number } | null>(null);
+  const [parseError, setParseError] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const { data: distanceData, isFetching, error } = useGetCountryDistance(
-    { countryA, countryB },
+  const { data, isFetching, error } = useGetCountriesNearby(
+    { country: query?.country ?? "", km: query?.km ?? 0 },
     {
       query: {
-        enabled: isCalculated && !!countryA && !!countryB,
-        queryKey: getGetCountryDistanceQueryKey({ countryA, countryB }),
+        enabled: !!query,
+        queryKey: getGetCountriesNearbyQueryKey({
+          country: query?.country ?? "",
+          km: query?.km ?? 0,
+        }),
         retry: false,
       },
-    }
+    },
   );
 
-  const handleCalculate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (countryA && countryB) {
-      setIsCalculated(true);
-      // Invalidate to force refetch if already calculated
-      queryClient.invalidateQueries({
-        queryKey: getGetCountryDistanceQueryKey({ countryA, countryB }),
-      });
+  const handleSubmit = useCallback(() => {
+    const parsed = parseInput(inputValue);
+    if (!parsed) {
+      setParseError(true);
+      return;
+    }
+    setParseError(false);
+    setQuery(parsed);
+  }, [inputValue]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSubmit();
     }
   };
 
-  // Reset calculated state when inputs change
-  useEffect(() => {
-    setIsCalculated(false);
-  }, [countryA, countryB]);
-
-  const swapCountries = () => {
-    const temp = countryA;
-    setCountryA(countryB);
-    setCountryB(temp);
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e.target.value);
+    setParseError(false);
   };
 
+  const hasResult = !!data && !isFetching;
+
   return (
-    <div className="min-h-[100dvh] w-full flex flex-col items-center py-12 px-4 sm:px-6 md:py-24 relative overflow-hidden bg-background">
-      {/* Decorative background map lines */}
-      <div className="absolute inset-0 pointer-events-none opacity-[0.03] flex items-center justify-center">
-        <svg viewBox="0 0 800 800" className="w-[120%] h-[120%] max-w-none text-primary" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="4 4">
-          <circle cx="400" cy="400" r="100" />
-          <circle cx="400" cy="400" r="200" />
-          <circle cx="400" cy="400" r="300" />
+    <div className="min-h-[100dvh] w-full flex flex-col items-center py-16 px-4 bg-background relative overflow-hidden">
+      {/* Background decoration */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.025]">
+        <svg viewBox="0 0 800 800" className="w-full h-full" fill="none" stroke="currentColor" strokeWidth="1">
+          <circle cx="400" cy="400" r="120" />
+          <circle cx="400" cy="400" r="240" />
+          <circle cx="400" cy="400" r="360" />
           <line x1="400" y1="0" x2="400" y2="800" />
           <line x1="0" y1="400" x2="800" y2="400" />
+          <line x1="80" y1="80" x2="720" y2="720" />
+          <line x1="720" y1="80" x2="80" y2="720" />
         </svg>
       </div>
 
-      <div className="w-full max-w-2xl relative z-10 space-y-8">
-        <div className="text-center space-y-4">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 text-primary mb-2 shadow-sm border border-primary/20">
-            <Globe className="w-8 h-8" />
+      <div className="w-full max-w-2xl relative z-10">
+        {/* Header */}
+        <div className="text-center mb-10 space-y-3">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 text-primary border border-primary/20 mb-1">
+            <Globe className="w-7 h-7" />
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-foreground">
-            Border Distance
+            Border Search
           </h1>
-          <p className="text-lg text-muted-foreground max-w-lg mx-auto">
-            Discover the exact distance between the borders of any two countries. Precision geographic measurement.
+          <p className="text-muted-foreground text-base sm:text-lg max-w-md mx-auto">
+            Type a country and distance to find all countries at that range.
           </p>
         </div>
 
-        <Card className="shadow-lg border-border/50 bg-card/80 backdrop-blur-sm">
-          <CardContent className="p-6 sm:p-8">
-            <form onSubmit={handleCalculate} className="space-y-6">
-              <div className="flex flex-col sm:flex-row items-stretch gap-4 sm:gap-2">
-                <div className="flex-1 space-y-2">
-                  <label className="text-sm font-medium text-foreground ml-1">Origin</label>
-                  <CountryCombobox
-                    value={countryA}
-                    onChange={setCountryA}
-                    placeholder="E.g. Canada"
-                  />
-                </div>
-                
-                <div className="flex items-end justify-center pb-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={swapCountries}
-                    className="h-10 w-10 rounded-full hover:bg-accent hover:text-accent-foreground text-muted-foreground"
-                    title="Swap countries"
-                  >
-                    <ArrowRightLeft className="w-4 h-4" />
-                  </Button>
-                </div>
+        {/* Search input */}
+        <div className="relative mb-3">
+          <div
+            className={`flex items-center gap-3 bg-card border rounded-xl px-4 py-3 shadow-md transition-all
+              ${parseError || error ? "border-destructive ring-2 ring-destructive/20" : "border-border focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20"}`}
+          >
+            <Search className="w-5 h-5 text-muted-foreground shrink-0" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={inputValue}
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              placeholder="France 550"
+              data-testid="input-search"
+              autoComplete="off"
+              spellCheck={false}
+              className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground/50 text-lg font-medium outline-none min-w-0"
+            />
+            <button
+              onClick={handleSubmit}
+              disabled={isFetching || !inputValue.trim()}
+              data-testid="button-search"
+              className="shrink-0 px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity"
+            >
+              {isFetching ? "Searching…" : "Search"}
+            </button>
+          </div>
 
-                <div className="flex-1 space-y-2">
-                  <label className="text-sm font-medium text-foreground ml-1">Destination</label>
-                  <CountryCombobox
-                    value={countryB}
-                    onChange={setCountryB}
-                    placeholder="E.g. Japan"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-2">
-                <Button 
-                  type="submit" 
-                  className="w-full h-12 text-base font-medium shadow-md transition-all hover:shadow-lg active:scale-[0.99]"
-                  disabled={!countryA || !countryB || isFetching}
-                >
-                  {isFetching ? "Calculating..." : "Calculate Distance"}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        <div className="min-h-[250px] w-full">
-          <AnimatePresence mode="wait">
-            {!isCalculated && !isFetching && !distanceData && !error && (
-              <motion.div
-                key="empty"
-                initial={{ opacity: 0, y: 10 }}
+          <AnimatePresence>
+            {parseError && (
+              <motion.p
+                key="parse-error"
+                initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.3 }}
-                className="h-full flex flex-col items-center justify-center text-center p-8 rounded-xl border border-dashed border-border bg-card/30"
-              >
-                <Map className="w-12 h-12 text-muted-foreground/30 mb-4" />
-                <h3 className="text-lg font-medium text-muted-foreground">Select two countries</h3>
-                <p className="text-sm text-muted-foreground/70 mt-1 max-w-sm">
-                  Choose an origin and destination to calculate the shortest distance between their borders.
-                </p>
-              </motion.div>
-            )}
-
-            {isFetching && (
-              <motion.div
-                key="loading"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="space-y-4"
+                className="mt-2 text-sm text-destructive flex items-center gap-1.5 ml-1"
               >
-                <Card className="overflow-hidden border-border/50">
-                  <CardContent className="p-8 flex flex-col items-center justify-center space-y-6">
-                    <Skeleton className="h-8 w-48 rounded-full" />
-                    <div className="flex items-center gap-4 w-full max-w-md">
-                      <Skeleton className="h-16 w-full rounded-xl" />
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            )}
-
-            {error && !isFetching && (
-              <motion.div
-                key="error"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-              >
-                <Card className="border-destructive/30 bg-destructive/5">
-                  <CardContent className="p-6 text-center space-y-2">
-                    <div className="w-10 h-10 rounded-full bg-destructive/10 text-destructive mx-auto flex items-center justify-center mb-4">
-                      <MapPin className="w-5 h-5" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-destructive">Calculation Failed</h3>
-                    <p className="text-sm text-destructive/80">
-                      {error?.error || "We couldn't calculate the distance between these countries. Please check the names and try again."}
-                    </p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            )}
-
-            {distanceData && !isFetching && !error && (
-              <motion.div
-                key="result"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, staggerChildren: 0.1 }}
-                className="space-y-4"
-              >
-                <Card className="overflow-hidden border-primary/20 bg-card shadow-xl">
-                  <CardContent className="p-0">
-                    <div className="bg-primary/5 border-b border-primary/10 px-6 py-4 flex justify-between items-center">
-                      <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Result</span>
-                      {distanceData.touching && (
-                        <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
-                          Bordering
-                        </span>
-                      )}
-                    </div>
-                    <div className="p-6 sm:p-8 flex flex-col items-center">
-                      <div className="flex items-center justify-center gap-4 w-full mb-8">
-                        <div className="flex-1 text-right">
-                          <h3 className="text-xl sm:text-2xl font-semibold text-foreground truncate" title={distanceData.countryA}>
-                            {distanceData.countryA}
-                          </h3>
-                        </div>
-                        <div className="w-12 h-12 shrink-0 rounded-full bg-accent text-accent-foreground flex items-center justify-center relative">
-                          <RouteIcon className="w-5 h-5" />
-                          <div className="absolute -left-1/2 right-full h-px bg-border top-1/2 -z-10" />
-                          <div className="absolute left-full -right-1/2 h-px bg-border top-1/2 -z-10" />
-                        </div>
-                        <div className="flex-1 text-left">
-                          <h3 className="text-xl sm:text-2xl font-semibold text-foreground truncate" title={distanceData.countryB}>
-                            {distanceData.countryB}
-                          </h3>
-                        </div>
-                      </div>
-
-                      <motion.div 
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ delay: 0.2, type: "spring" }}
-                        className="text-center"
-                      >
-                        <div className="text-5xl sm:text-7xl font-bold tracking-tighter text-primary mb-2 flex items-baseline justify-center gap-2">
-                          {distanceData.distanceKm.toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                          <span className="text-2xl sm:text-3xl font-medium text-muted-foreground tracking-normal">km</span>
-                        </div>
-                        <p className="text-muted-foreground mt-2 font-medium">
-                          {distanceData.touching 
-                            ? "These countries share a land border." 
-                            : "Shortest distance between borders."}
-                        </p>
-                      </motion.div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
+                <AlertCircle className="w-3.5 h-3.5" />
+                Format: <span className="font-mono font-semibold">Country&nbsp;KM</span> — e.g.
+                <span className="font-mono font-semibold">France&nbsp;550</span>
+              </motion.p>
             )}
           </AnimatePresence>
         </div>
+
+        <p className="text-xs text-muted-foreground/60 ml-1 mb-10">
+          Press Enter or click Search. Example: <span className="font-mono">Germany 800</span>, <span className="font-mono">Japan 1200</span>
+        </p>
+
+        {/* Results area */}
+        <AnimatePresence mode="wait">
+          {/* Idle state */}
+          {!query && !isFetching && (
+            <motion.div
+              key="idle"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col items-center justify-center py-16 text-center"
+            >
+              <MapPin className="w-10 h-10 text-muted-foreground/20 mb-3" />
+              <p className="text-muted-foreground/50 text-sm">Results will appear here</p>
+            </motion.div>
+          )}
+
+          {/* Loading */}
+          {isFetching && (
+            <motion.div
+              key="loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="space-y-3"
+            >
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-14 rounded-lg bg-muted/40 animate-pulse"
+                  style={{ animationDelay: `${i * 60}ms` }}
+                />
+              ))}
+            </motion.div>
+          )}
+
+          {/* API error */}
+          {error && !isFetching && (
+            <motion.div
+              key="api-error"
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 flex items-start gap-3"
+            >
+              <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-destructive">Country not found</p>
+                <p className="text-sm text-destructive/70 mt-0.5">
+                  {error?.error ?? "Could not find that country. Try a different spelling."}
+                </p>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Results */}
+          {hasResult && (
+            <motion.div
+              key="results"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              {/* Summary header */}
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">
+                    Countries ~{data.targetKm.toLocaleString()} km from{" "}
+                    <span className="text-primary">{data.sourceCountry}</span>
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    ±{data.tolerance} km tolerance · {data.matches.length} match
+                    {data.matches.length !== 1 ? "es" : ""}
+                  </p>
+                </div>
+              </div>
+
+              {data.matches.length === 0 ? (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex flex-col items-center py-14 text-center"
+                >
+                  <MapPin className="w-10 h-10 text-muted-foreground/20 mb-3" />
+                  <p className="text-muted-foreground font-medium">No countries found</p>
+                  <p className="text-sm text-muted-foreground/60 mt-1">
+                    Try a different distance or increase the tolerance.
+                  </p>
+                </motion.div>
+              ) : (
+                <motion.ul
+                  className="space-y-2"
+                  initial="hidden"
+                  animate="visible"
+                  variants={{
+                    visible: { transition: { staggerChildren: 0.04 } },
+                    hidden: {},
+                  }}
+                >
+                  {data.matches.map((match) => (
+                    <motion.li
+                      key={match.name}
+                      data-testid={`result-country-${match.name}`}
+                      variants={{
+                        hidden: { opacity: 0, y: 8 },
+                        visible: { opacity: 1, y: 0 },
+                      }}
+                      className="flex items-center justify-between bg-card border border-border rounded-lg px-4 py-3 hover:border-primary/30 hover:bg-primary/5 transition-colors"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-2 h-2 rounded-full bg-primary/60 shrink-0" />
+                        <span className="font-medium text-foreground truncate">{match.name}</span>
+                        {match.touching && (
+                          <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                            Bordering
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-muted-foreground text-sm font-mono shrink-0 ml-3">
+                        {match.distanceKm.toLocaleString()} km
+                      </span>
+                    </motion.li>
+                  ))}
+                </motion.ul>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

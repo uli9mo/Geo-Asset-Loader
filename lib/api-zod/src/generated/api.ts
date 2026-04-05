@@ -24,25 +24,31 @@ export const ListCountriesResponse = zod.object({
 });
 
 /**
- * Returns the shortest distance in km between the borders of two countries
- * @summary Get shortest border distance between two countries
+ * Returns all countries whose border is approximately the given number of km from the source country's border
+ * @summary Find all countries at a given distance from a source country
  */
-export const GetCountryDistanceQueryParams = zod.object({
-  countryA: zod.coerce.string().describe("Name of the first country"),
-  countryB: zod.coerce.string().describe("Name of the second country"),
+export const getCountriesNearbyQueryToleranceDefault = 50;
+
+export const GetCountriesNearbyQueryParams = zod.object({
+  country: zod.coerce.string().describe("Name of the source country"),
+  km: zod.coerce.number().describe("Target distance in kilometers"),
+  tolerance: zod.coerce
+    .number()
+    .default(getCountriesNearbyQueryToleranceDefault)
+    .describe(
+      "Tolerance in km (default 50). Countries within km ± tolerance are returned.",
+    ),
 });
 
-export const GetCountryDistanceResponse = zod.object({
-  countryA: zod
-    .string()
-    .describe("Name of the first country as found in the dataset"),
-  countryB: zod
-    .string()
-    .describe("Name of the second country as found in the dataset"),
-  distanceKm: zod
-    .number()
-    .describe(
-      "Shortest border distance in kilometers (0 if they share a border)",
-    ),
-  touching: zod.boolean().describe("True if the countries share a border"),
+export const GetCountriesNearbyResponse = zod.object({
+  sourceCountry: zod.string().describe("Resolved name of the source country"),
+  targetKm: zod.number().describe("The requested distance in km"),
+  tolerance: zod.number().describe("The tolerance used in km"),
+  matches: zod.array(
+    zod.object({
+      name: zod.string().describe("Country name"),
+      distanceKm: zod.number().describe("Actual border distance in km"),
+      touching: zod.boolean().describe("True if sharing a border"),
+    }),
+  ),
 });

@@ -39,34 +39,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CountryList"
-  /countries/distance:
+  /countries/nearby:
     get:
-      operationId: getCountryDistance
+      operationId: getCountriesNearby
       tags: [countries]
-      summary: Get shortest border distance between two countries
-      description: Returns the shortest distance in km between the borders of two countries
+      summary: Find all countries at a given distance from a source country
+      description: Returns all countries whose border is approximately the given number of km from the source country's border
       parameters:
-        - name: countryA
+        - name: country
           in: query
           required: true
           schema:
             type: string
-          description: Name of the first country
-        - name: countryB
+          description: Name of the source country
+        - name: km
           in: query
           required: true
           schema:
-            type: string
-          description: Name of the second country
+            type: number
+          description: Target distance in kilometers
+        - name: tolerance
+          in: query
+          required: false
+          schema:
+            type: number
+            default: 50
+          description: Tolerance in km (default 50). Countries within km ± tolerance are returned.
       responses:
         "200":
-          description: Distance result
+          description: Countries at approximately that distance
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DistanceResult"
+                $ref: "#/components/schemas/NearbyResult"
         "404":
-          description: One or both countries not found
+          description: Source country not found
           content:
             application/json:
               schema:
@@ -95,26 +102,43 @@ components:
             type: string
       required:
         - countries
-    DistanceResult:
+    CountryMatch:
       type: object
       properties:
-        countryA:
+        name:
           type: string
-          description: Name of the first country as found in the dataset
-        countryB:
-          type: string
-          description: Name of the second country as found in the dataset
+          description: Country name
         distanceKm:
           type: number
-          description: Shortest border distance in kilometers (0 if they share a border)
+          description: Actual border distance in km
         touching:
           type: boolean
-          description: True if the countries share a border
+          description: True if sharing a border
       required:
-        - countryA
-        - countryB
+        - name
         - distanceKm
         - touching
+    NearbyResult:
+      type: object
+      properties:
+        sourceCountry:
+          type: string
+          description: Resolved name of the source country
+        targetKm:
+          type: number
+          description: The requested distance in km
+        tolerance:
+          type: number
+          description: The tolerance used in km
+        matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/CountryMatch"
+      required:
+        - sourceCountry
+        - targetKm
+        - tolerance
+        - matches
     ErrorResponse:
       type: object
       properties:

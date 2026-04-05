@@ -15,10 +15,10 @@ import type {
 
 import type {
   CountryList,
-  DistanceResult,
   ErrorResponse,
-  GetCountryDistanceParams,
+  GetCountriesNearbyParams,
   HealthStatus,
+  NearbyResult,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -183,10 +183,10 @@ export function useListCountries<
 }
 
 /**
- * Returns the shortest distance in km between the borders of two countries
- * @summary Get shortest border distance between two countries
+ * Returns all countries whose border is approximately the given number of km from the source country's border
+ * @summary Find all countries at a given distance from a source country
  */
-export const getGetCountryDistanceUrl = (params: GetCountryDistanceParams) => {
+export const getGetCountriesNearbyUrl = (params: GetCountriesNearbyParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -198,34 +198,34 @@ export const getGetCountryDistanceUrl = (params: GetCountryDistanceParams) => {
   const stringifiedParams = normalizedParams.toString();
 
   return stringifiedParams.length > 0
-    ? `/api/countries/distance?${stringifiedParams}`
-    : `/api/countries/distance`;
+    ? `/api/countries/nearby?${stringifiedParams}`
+    : `/api/countries/nearby`;
 };
 
-export const getCountryDistance = async (
-  params: GetCountryDistanceParams,
+export const getCountriesNearby = async (
+  params: GetCountriesNearbyParams,
   options?: RequestInit,
-): Promise<DistanceResult> => {
-  return customFetch<DistanceResult>(getGetCountryDistanceUrl(params), {
+): Promise<NearbyResult> => {
+  return customFetch<NearbyResult>(getGetCountriesNearbyUrl(params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getGetCountryDistanceQueryKey = (
-  params?: GetCountryDistanceParams,
+export const getGetCountriesNearbyQueryKey = (
+  params?: GetCountriesNearbyParams,
 ) => {
-  return [`/api/countries/distance`, ...(params ? [params] : [])] as const;
+  return [`/api/countries/nearby`, ...(params ? [params] : [])] as const;
 };
 
-export const getGetCountryDistanceQueryOptions = <
-  TData = Awaited<ReturnType<typeof getCountryDistance>>,
+export const getGetCountriesNearbyQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCountriesNearby>>,
   TError = ErrorType<ErrorResponse>,
 >(
-  params: GetCountryDistanceParams,
+  params: GetCountriesNearbyParams,
   options?: {
     query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getCountryDistance>>,
+      Awaited<ReturnType<typeof getCountriesNearby>>,
       TError,
       TData
     >;
@@ -235,43 +235,43 @@ export const getGetCountryDistanceQueryOptions = <
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
   const queryKey =
-    queryOptions?.queryKey ?? getGetCountryDistanceQueryKey(params);
+    queryOptions?.queryKey ?? getGetCountriesNearbyQueryKey(params);
 
   const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getCountryDistance>>
-  > = ({ signal }) => getCountryDistance(params, { signal, ...requestOptions });
+    Awaited<ReturnType<typeof getCountriesNearby>>
+  > = ({ signal }) => getCountriesNearby(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getCountryDistance>>,
+    Awaited<ReturnType<typeof getCountriesNearby>>,
     TError,
     TData
   > & { queryKey: QueryKey };
 };
 
-export type GetCountryDistanceQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getCountryDistance>>
+export type GetCountriesNearbyQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCountriesNearby>>
 >;
-export type GetCountryDistanceQueryError = ErrorType<ErrorResponse>;
+export type GetCountriesNearbyQueryError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Get shortest border distance between two countries
+ * @summary Find all countries at a given distance from a source country
  */
 
-export function useGetCountryDistance<
-  TData = Awaited<ReturnType<typeof getCountryDistance>>,
+export function useGetCountriesNearby<
+  TData = Awaited<ReturnType<typeof getCountriesNearby>>,
   TError = ErrorType<ErrorResponse>,
 >(
-  params: GetCountryDistanceParams,
+  params: GetCountriesNearbyParams,
   options?: {
     query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getCountryDistance>>,
+      Awaited<ReturnType<typeof getCountriesNearby>>,
       TError,
       TData
     >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetCountryDistanceQueryOptions(params, options);
+  const queryOptions = getGetCountriesNearbyQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

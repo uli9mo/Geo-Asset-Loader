@@ -7,7 +7,8 @@
  */
 
 export * from "./countryList";
-export * from "./distanceResult";
+export * from "./countryMatch";
 export * from "./errorResponse";
-export * from "./getCountryDistanceParams";
+export * from "./getCountriesNearbyParams";
 export * from "./healthStatus";
+export * from "./nearbyResult";

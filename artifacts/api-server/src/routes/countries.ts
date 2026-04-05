@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import {
-  GetCountryDistanceQueryParams,
-  GetCountryDistanceResponse,
+  GetCountriesNearbyQueryParams,
+  GetCountriesNearbyResponse,
   ListCountriesResponse,
 } from "@workspace/api-zod";
 import { loadCountries, findCountry, calculateBorderDistanceKm } from "../lib/geo";
@@ -14,43 +14,52 @@ router.get("/countries", async (req, res): Promise<void> => {
   res.json(ListCountriesResponse.parse({ countries: names }));
 });
 
-router.get("/countries/distance", async (req, res): Promise<void> => {
-  const parsed = GetCountryDistanceQueryParams.safeParse(req.query);
+router.get("/countries/nearby", async (req, res): Promise<void> => {
+  const parsed = GetCountriesNearbyQueryParams.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
 
-  const { countryA, countryB } = parsed.data;
+  const { country, km, tolerance = 50 } = parsed.data;
   const countries = await loadCountries();
 
-  const featureA = findCountry(countryA, countries);
-  const featureB = findCountry(countryB, countries);
-
-  if (!featureA) {
-    res.status(404).json({ error: `Country not found: "${countryA}"` });
+  const sourceFeature = findCountry(country, countries);
+  if (!sourceFeature) {
+    res.status(404).json({ error: `Country not found: "${country}"` });
     return;
   }
 
-  if (!featureB) {
-    res.status(404).json({ error: `Country not found: "${countryB}"` });
-    return;
+  const lower = km - tolerance;
+  const upper = km + tolerance;
+
+  const matches = [];
+  for (const target of countries) {
+    if (target.name === sourceFeature.name) continue;
+
+    const distanceKm = calculateBorderDistanceKm(sourceFeature, target);
+    if (distanceKm >= lower && distanceKm <= upper) {
+      matches.push({
+        name: target.name,
+        distanceKm,
+        touching: distanceKm === 0,
+      });
+    }
   }
 
-  const distanceKm = calculateBorderDistanceKm(featureA, featureB);
-  const touching = distanceKm === 0;
+  matches.sort((a, b) => a.distanceKm - b.distanceKm);
 
   req.log.info(
-    { countryA: featureA.name, countryB: featureB.name, distanceKm, touching },
-    "Distance calculated",
+    { source: sourceFeature.name, km, tolerance, matchCount: matches.length },
+    "Nearby countries calculated",
   );
 
   res.json(
-    GetCountryDistanceResponse.parse({
-      countryA: featureA.name,
-      countryB: featureB.name,
-      distanceKm,
-      touching,
+    GetCountriesNearbyResponse.parse({
+      sourceCountry: sourceFeature.name,
+      targetKm: km,
+      tolerance,
+      matches,
     }),
   );
 });
