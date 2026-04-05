@@ -184,7 +184,7 @@ export default function Home() {
               <div>
                 <p className="font-semibold text-destructive">Country not found</p>
                 <p className="text-sm text-destructive/70 mt-0.5">
-                  {error?.error ?? "Could not find that country. Try a different spelling."}
+                  {error?.message ?? "Could not find that country. Try a different spelling."}
                 </p>
               </div>
             </motion.div>

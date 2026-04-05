@@ -1,4 +1,5 @@
 import * as turf from "@turf/turf";
+import type { FeatureCollection, Geometry } from "geojson";
 import { logger } from "./logger";
 
 const WORLD_GEOJSON_URL =
@@ -30,7 +31,7 @@ export async function loadCountries(): Promise<CountryFeature[]> {
     throw new Error(`Failed to fetch world GeoJSON: ${response.statusText}`);
   }
 
-  const geojson = (await response.json()) as turf.FeatureCollection;
+  const geojson = (await response.json()) as FeatureCollection;
 
   const countries: CountryFeature[] = [];
   for (const feature of geojson.features) {
@@ -57,8 +58,8 @@ export function calculateBorderDistanceKm(
   a: CountryFeature,
   b: CountryFeature,
 ): number {
-  const geoA = a.geometry as turf.Geometry;
-  const geoB = b.geometry as turf.Geometry;
+  const geoA = a.geometry as Geometry;
+  const geoB = b.geometry as Geometry;
 
   const featureA = turf.feature(geoA);
   const featureB = turf.feature(geoB);
@@ -87,10 +88,10 @@ export function calculateBorderDistanceKm(
   return Math.round(minDist);
 }
 
-function flattenCoords(geometry: turf.Geometry): number[][] {
+function flattenCoords(geometry: Geometry): number[][] {
   const coords: number[][] = [];
 
-  function walk(g: turf.Geometry) {
+  function walk(g: Geometry) {
     switch (g.type) {
       case "Point":
         coords.push(g.coordinates as number[]);
@@ -113,7 +114,7 @@ function flattenCoords(geometry: turf.Geometry): number[][] {
         }
         break;
       case "GeometryCollection":
-        for (const child of g.geometries) walk(child as turf.Geometry);
+        for (const child of g.geometries) walk(child as Geometry);
         break;
     }
   }
