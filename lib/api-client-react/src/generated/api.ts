@@ -13,7 +13,13 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  CountryList,
+  DistanceResult,
+  ErrorResponse,
+  GetCountryDistanceParams,
+  HealthStatus,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
 import type { ErrorType } from "../custom-fetch";
@@ -92,6 +98,180 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns a list of all country names available in the dataset
+ * @summary List all available countries
+ */
+export const getListCountriesUrl = () => {
+  return `/api/countries`;
+};
+
+export const listCountries = async (
+  options?: RequestInit,
+): Promise<CountryList> => {
+  return customFetch<CountryList>(getListCountriesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListCountriesQueryKey = () => {
+  return [`/api/countries`] as const;
+};
+
+export const getListCountriesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCountries>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCountries>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListCountriesQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listCountries>>> = ({
+    signal,
+  }) => listCountries({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCountries>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCountriesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCountries>>
+>;
+export type ListCountriesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all available countries
+ */
+
+export function useListCountries<
+  TData = Awaited<ReturnType<typeof listCountries>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCountries>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCountriesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns the shortest distance in km between the borders of two countries
+ * @summary Get shortest border distance between two countries
+ */
+export const getGetCountryDistanceUrl = (params: GetCountryDistanceParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/countries/distance?${stringifiedParams}`
+    : `/api/countries/distance`;
+};
+
+export const getCountryDistance = async (
+  params: GetCountryDistanceParams,
+  options?: RequestInit,
+): Promise<DistanceResult> => {
+  return customFetch<DistanceResult>(getGetCountryDistanceUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCountryDistanceQueryKey = (
+  params?: GetCountryDistanceParams,
+) => {
+  return [`/api/countries/distance`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetCountryDistanceQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCountryDistance>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: GetCountryDistanceParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCountryDistance>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCountryDistanceQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCountryDistance>>
+  > = ({ signal }) => getCountryDistance(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCountryDistance>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCountryDistanceQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCountryDistance>>
+>;
+export type GetCountryDistanceQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get shortest border distance between two countries
+ */
+
+export function useGetCountryDistance<
+  TData = Awaited<ReturnType<typeof getCountryDistance>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: GetCountryDistanceParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCountryDistance>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCountryDistanceQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

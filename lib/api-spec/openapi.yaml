@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: countries
+    description: Country operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,57 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /countries:
+    get:
+      operationId: listCountries
+      tags: [countries]
+      summary: List all available countries
+      description: Returns a list of all country names available in the dataset
+      responses:
+        "200":
+          description: List of country names
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CountryList"
+  /countries/distance:
+    get:
+      operationId: getCountryDistance
+      tags: [countries]
+      summary: Get shortest border distance between two countries
+      description: Returns the shortest distance in km between the borders of two countries
+      parameters:
+        - name: countryA
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Name of the first country
+        - name: countryB
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Name of the second country
+      responses:
+        "200":
+          description: Distance result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DistanceResult"
+        "404":
+          description: One or both countries not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +86,39 @@ components:
           type: string
       required:
         - status
-
+    CountryList:
+      type: object
+      properties:
+        countries:
+          type: array
+          items:
+            type: string
+      required:
+        - countries
+    DistanceResult:
+      type: object
+      properties:
+        countryA:
+          type: string
+          description: Name of the first country as found in the dataset
+        countryB:
+          type: string
+          description: Name of the second country as found in the dataset
+        distanceKm:
+          type: number
+          description: Shortest border distance in kilometers (0 if they share a border)
+        touching:
+          type: boolean
+          description: True if the countries share a border
+      required:
+        - countryA
+        - countryB
+        - distanceKm
+        - touching
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

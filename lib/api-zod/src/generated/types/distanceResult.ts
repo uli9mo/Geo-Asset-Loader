@@ -5,13 +5,6 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-export interface HealthStatus {
-  status: string;
-}
-
-export interface CountryList {
-  countries: string[];
-}
 
 export interface DistanceResult {
   /** Name of the first country as found in the dataset */
@@ -23,18 +16,3 @@ export interface DistanceResult {
   /** True if the countries share a border */
   touching: boolean;
 }
-
-export interface ErrorResponse {
-  error: string;
-}
-
-export type GetCountryDistanceParams = {
-  /**
-   * Name of the first country
-   */
-  countryA: string;
-  /**
-   * Name of the second country
-   */
-  countryB: string;
-};

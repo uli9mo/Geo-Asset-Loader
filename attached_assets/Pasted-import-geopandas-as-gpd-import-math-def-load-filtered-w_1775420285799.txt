@@ -1,0 +1,85 @@
+import geopandas as gpd
+import math
+
+def load_filtered_world_map():
+    # Load the world map from the GeoJSON URL
+    url = 'https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json'
+    world = gpd.read_file(url)
+    
+    # Define excluded countries
+    EXCLUDED = ["Nauru", "Western Sahara", "Tuvalu", "Palau", "Kiribati", "Micronesia"]
+    
+    # Filter out excluded countries - using lowercase 'name' column
+    mask = ~world['name'].isin(EXCLUDED)
+    world = world[mask].reset_index(drop=True)
+    
+    return world
+
+def find_country_geometry(country_name, world):
+    # Fuzzy search: find any country containing the input string (case insensitive)
+    # Using lowercase 'name' column
+    matches = world[world.name.str.contains(country_name, case=False, na=False)]
+    
+    if matches.empty:
+        # If no matches in name, try any other possible name-related columns
+        possible_cols = ['NAME', 'ADMIN', 'admin']
+        for col in possible_cols:
+            if col in world.columns:
+                matches = world[world[col].str.contains(country_name, case=False, na=False)]
+                if not matches.empty:
+                    break
+    
+    if matches.empty:
+        return None
+    
+    # Return the geometry of the first match
+    return matches.iloc[0].geometry
+
+def calculate_border_distance(country_a, country_b, world):
+    # Find geometries for both countries using fuzzy search
+    poly_a = find_country_geometry(country_a, world)
+    poly_b = find_country_geometry(country_b, world)
+    
+    if poly_a is None or poly_b is None:
+        return None, "One or both countries not found in the dataset."
+
+    # Calculate distance between borders (boundaries)
+    border_distance = poly_a.boundary.distance(poly_b.boundary)
+    
+    # Convert from degrees to kilometers (approximate) and round to whole number
+    distance_km = round(border_distance * 111)
+    
+    return distance_km, None
+
+def main():
+    print("🌍 Border Distance Calculator 🌍")
+    print("Loading world map data...")
+    
+    try:
+        world = load_filtered_world_map()
+        print("World map loaded successfully!")
+    except Exception as e:
+        print(f"Error loading world map: {e}")
+        return
+    
+    print("Find the shortest distance between the borders of two countries!")
+    print("Note: Some partial names work (e.g., 'Congo', 'UK')")
+    
+    while True:
+        print("\n" + "-"*40)
+        country_a = input("Enter Country A: ")
+        country_b = input("Enter Country B: ")
+        
+        distance, error = calculate_border_distance(country_a, country_b, world)
+        
+        if error:
+            print(error)
+            continue
+        
+        if distance == 0:
+            print(f"\n🤝 {country_a} and {country_b} are touching!")
+        else:
+            print(f"\n📏 The shortest distance between {country_a} and {country_b} is {distance} km")
+
+if __name__ == "__main__":
+    main()

@@ -14,3 +14,35 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Returns a list of all country names available in the dataset
+ * @summary List all available countries
+ */
+export const ListCountriesResponse = zod.object({
+  countries: zod.array(zod.string()),
+});
+
+/**
+ * Returns the shortest distance in km between the borders of two countries
+ * @summary Get shortest border distance between two countries
+ */
+export const GetCountryDistanceQueryParams = zod.object({
+  countryA: zod.coerce.string().describe("Name of the first country"),
+  countryB: zod.coerce.string().describe("Name of the second country"),
+});
+
+export const GetCountryDistanceResponse = zod.object({
+  countryA: zod
+    .string()
+    .describe("Name of the first country as found in the dataset"),
+  countryB: zod
+    .string()
+    .describe("Name of the second country as found in the dataset"),
+  distanceKm: zod
+    .number()
+    .describe(
+      "Shortest border distance in kilometers (0 if they share a border)",
+    ),
+  touching: zod.boolean().describe("True if the countries share a border"),
+});

@@ -6,4 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./countryList";
+export * from "./distanceResult";
+export * from "./errorResponse";
+export * from "./getCountryDistanceParams";
 export * from "./healthStatus";
