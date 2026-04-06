@@ -1,7 +1,12 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { Search, Globe, X, RefreshCw, Compass, Star } from "lucide-react";
+import { Search, Globe, X, RefreshCw, Compass, Star, Lightbulb } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { findCountriesNearby, findNearestResultKm, type NearbyResult } from "@/lib/geo";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -10,6 +15,8 @@ interface GuessEntry {
   id: string;
   result: NearbyResult;
 }
+
+const TOLERANCE_OPTIONS = [25, 50, 75, 100, 150, 200];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -24,7 +31,7 @@ function parseInput(raw: string): { country: string; km: number } | null {
 }
 
 function guessKey(r: NearbyResult) {
-  return `${r.sourceCountry}|${r.targetKm}`;
+  return `${r.sourceCountry}|${r.targetKm}|${r.tolerance}`;
 }
 
 // ─── Guess Card ──────────────────────────────────────────────────────────────
@@ -50,17 +57,20 @@ function GuessCard({
       exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
       className={`relative rounded-xl border px-4 py-3 group transition-colors
         ${isNewest
-          ? "bg-card/60 border-primary/30 shadow-sm shadow-primary/10"
+          ? "bg-card/70 border-primary/30 shadow-sm shadow-primary/10"
           : "bg-muted/20 border-border/40 backdrop-blur-sm"}`}
     >
       {/* Header row */}
       <div className="flex items-start justify-between gap-2 mb-2.5">
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <span className="text-sm font-semibold text-foreground truncate">
             {result.sourceCountry}
           </span>
           <span className="shrink-0 text-xs font-mono px-1.5 py-0.5 rounded-md bg-primary/10 text-primary">
             {result.targetKm.toLocaleString()} km
+          </span>
+          <span className="shrink-0 text-xs text-muted-foreground/60">
+            ±{result.tolerance} km
           </span>
           <span className="shrink-0 text-xs text-muted-foreground">
             {result.matches.length === 0
@@ -79,30 +89,42 @@ function GuessCard({
 
       {/* Country chips */}
       {result.matches.length === 0 ? (
-        <p className="text-xs text-muted-foreground/60 italic">
-          No countries in this range
-        </p>
+        <p className="text-xs text-muted-foreground/60 italic">No countries in this range</p>
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {result.matches.map((m) => {
             const isConfirmed = crossReferenced.has(m.name);
             return (
-              <span
-                key={m.name}
-                className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-medium transition-colors
-                  ${isConfirmed
-                    ? "bg-amber-400/15 border-amber-400/50 text-amber-600 dark:text-amber-400"
-                    : "bg-muted/50 border-border/60 text-muted-foreground"
-                  }`}
-              >
-                {isConfirmed && <Star className="w-2.5 h-2.5 fill-current" />}
-                {m.name}
-                {m.touching && (
-                  <span className="opacity-60 ml-0.5">·B</span>
-                )}
-              </span>
+              <Tooltip key={m.name}>
+                <TooltipTrigger asChild>
+                  <span
+                    className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-medium cursor-default transition-colors
+                      ${isConfirmed
+                        ? "bg-amber-400/15 border-amber-400/50 text-amber-600 dark:text-amber-400"
+                        : "bg-muted/50 border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                  >
+                    {isConfirmed && <Star className="w-2.5 h-2.5 fill-current" />}
+                    {m.name}
+                    {m.touching && <span className="opacity-50 ml-0.5">·B</span>}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  {m.name} · {m.distanceKm.toLocaleString()} km away
+                </TooltipContent>
+              </Tooltip>
             );
           })}
+        </div>
+      )}
+
+      {/* Midpoint suggestion */}
+      {result.midpointSuggestion && (
+        <div className="mt-2.5 flex items-center gap-1.5 text-xs text-muted-foreground/70">
+          <Lightbulb className="w-3 h-3 text-yellow-500/70 shrink-0" />
+          <span>Try guessing from</span>
+          <span className="font-semibold text-foreground/80">{result.midpointSuggestion}</span>
+          <span className="text-muted-foreground/50">to narrow it down</span>
         </div>
       )}
     </motion.div>
@@ -116,13 +138,14 @@ export default function Home() {
   const [query, setQuery] = useState<{ country: string; km: number } | null>(null);
   const [parseError, setParseError] = useState(false);
   const [guesses, setGuesses] = useState<GuessEntry[]>([]);
+  const [tolerance, setTolerance] = useState(50);
   const [isFindingNearest, setIsFindingNearest] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // ── Main search query ──────────────────────────────────────────────────────
   const { data, isFetching, error } = useQuery({
-    queryKey: ["nearby", query?.country, query?.km],
-    queryFn: () => findCountriesNearby(query!.country, query!.km),
+    queryKey: ["nearby", query?.country, query?.km, tolerance],
+    queryFn: () => findCountriesNearby(query!.country, query!.km, tolerance),
     enabled: !!query,
     retry: false,
   });
@@ -138,7 +161,6 @@ export default function Home() {
   }, [data, isFetching]);
 
   // ── Cross-referencing ──────────────────────────────────────────────────────
-  // Countries appearing in 2+ guess results are "confirmed" candidates
   const crossReferenced = useMemo<Set<string>>(() => {
     const counts = new Map<string, number>();
     for (const g of guesses) {
@@ -196,15 +218,13 @@ export default function Home() {
     setIsFindingNearest(true);
     try {
       const nearest = await findNearestResultKm(query.country, query.km);
-      const newKm = nearest.targetKm;
-      setInputValue(`${nearest.sourceCountry} ${newKm}`);
-      setQuery({ country: nearest.sourceCountry, km: newKm });
+      setInputValue(`${nearest.sourceCountry} ${nearest.targetKm}`);
+      setQuery({ country: nearest.sourceCountry, km: nearest.targetKm });
     } finally {
       setIsFindingNearest(false);
     }
   };
 
-  // ── Whether we're in an active "searching" state ───────────────────────────
   const isActive = isFetching || isFindingNearest;
 
   return (
@@ -222,7 +242,7 @@ export default function Home() {
         </svg>
       </div>
 
-      <div className="w-full max-w-2xl relative z-10 flex flex-col gap-6">
+      <div className="w-full max-w-2xl relative z-10 flex flex-col gap-5">
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="text-center space-y-2">
@@ -238,7 +258,7 @@ export default function Home() {
         </div>
 
         {/* ── Search input ─────────────────────────────────────────────────── */}
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           <div
             className={`flex items-center gap-3 bg-card border rounded-xl px-4 py-3 shadow-md transition-all
               ${parseError
@@ -260,7 +280,6 @@ export default function Home() {
             {guesses.length > 0 && (
               <button
                 onClick={newRound}
-                title="New Round"
                 className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-muted-foreground text-xs font-medium hover:bg-muted/50 hover:text-foreground transition-colors"
               >
                 <RefreshCw className="w-3 h-3" />
@@ -274,6 +293,26 @@ export default function Home() {
             >
               {isActive ? "…" : "Search"}
             </button>
+          </div>
+
+          {/* Tolerance picker */}
+          <div className="flex items-center gap-2 px-1">
+            <span className="text-xs text-muted-foreground shrink-0">±km tolerance:</span>
+            <div className="flex gap-1">
+              {TOLERANCE_OPTIONS.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTolerance(t)}
+                  className={`text-xs px-2 py-0.5 rounded-md font-medium transition-colors
+                    ${tolerance === t
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
           </div>
 
           <AnimatePresence>
@@ -298,7 +337,8 @@ export default function Home() {
             >
               <Star className="w-3 h-3 fill-current" />
               <span>
-                <span className="font-semibold">{crossReferenced.size}</span> country{crossReferenced.size !== 1 ? " pair" : ""} confirmed across multiple guesses
+                <span className="font-semibold">{crossReferenced.size}</span>{" "}
+                {crossReferenced.size === 1 ? "country" : "countries"} confirmed across multiple guesses
               </span>
             </motion.p>
           )}
@@ -354,7 +394,7 @@ export default function Home() {
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              className="flex flex-col items-center gap-2 py-2"
+              className="flex flex-col items-center gap-2 py-1"
             >
               <p className="text-sm text-muted-foreground">
                 No countries found at{" "}
@@ -370,7 +410,7 @@ export default function Home() {
                 <Compass className="w-4 h-4" />
                 {isFindingNearest ? "Scanning all distances…" : "Find Nearest Country"}
               </button>
-              <p className="text-xs text-muted-foreground/60">
+              <p className="text-xs text-muted-foreground/50">
                 Scans every country and snaps to the nearest real distance
               </p>
             </motion.div>
@@ -413,9 +453,7 @@ export default function Home() {
               className="flex flex-col items-center justify-center py-16 text-center gap-2"
             >
               <div className="text-4xl opacity-20 select-none">🌍</div>
-              <p className="text-muted-foreground/50 text-sm">
-                Your guesses will appear here
-              </p>
+              <p className="text-muted-foreground/50 text-sm">Your guesses will appear here</p>
               <p className="text-muted-foreground/35 text-xs">
                 Countries confirmed in multiple guesses glow{" "}
                 <span className="text-amber-500/60">gold ★</span>

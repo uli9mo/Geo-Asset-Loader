@@ -4,14 +4,37 @@ import type { FeatureCollection, Geometry } from "geojson";
 const WORLD_GEOJSON_URL =
   "https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json";
 
+// Only these micro-states are excluded. All other countries (including Antarctica) are included.
 const EXCLUDED_COUNTRIES = new Set([
   "Nauru",
-  "Western Sahara",
   "Tuvalu",
   "Palau",
   "Kiribati",
   "Micronesia",
-  "Antarctica",
+  // Micro-states/city-states
+  "Vatican",
+  "Vatican City",
+  "Holy See",
+  "San Marino",
+  "Liechtenstein",
+  "Andorra",
+  // Small island nations
+  "Marshall Islands",
+  "Marshall Is.",
+  "Saint Kitts and Nevis",
+  "St. Kitts and Nevis",
+  "Maldives",
+  "Grenada",
+  "Antigua and Barbuda",
+  "Antigua and Barb.",
+  "Saint Lucia",
+  "St. Lucia",
+  "Tonga",
+  "Sao Tome and Principe",
+  "São Tomé and Príncipe",
+  "Comoros",
+  "Timor-Leste",
+  "East Timor",
 ]);
 
 export interface CountryFeature {
@@ -128,6 +151,50 @@ function sampleRing(ring: number[][], out: number[][]): void {
   }
 }
 
+/**
+ * When 3+ countries match, find the geographic centroid of all matches
+ * and return the nearest country to that point (not already in the matches).
+ * This gives a smart "next guess" suggestion.
+ */
+function computeMidpointSuggestion(
+  countries: CountryFeature[],
+  sourceCountry: string,
+  matchedNames: string[],
+): string | null {
+  if (matchedNames.length < 3) return null;
+
+  const matchedFeatures = matchedNames
+    .map((n) => countries.find((c) => c.name === n))
+    .filter((c): c is CountryFeature => !!c);
+
+  if (matchedFeatures.length < 3) return null;
+
+  let sumLng = 0;
+  let sumLat = 0;
+  for (const f of matchedFeatures) {
+    const centroid = turf.centroid(turf.feature(f.geometry as Geometry));
+    sumLng += centroid.geometry.coordinates[0];
+    sumLat += centroid.geometry.coordinates[1];
+  }
+  const center = turf.point([sumLng / matchedFeatures.length, sumLat / matchedFeatures.length]);
+
+  const excluded = new Set([...matchedNames, sourceCountry]);
+  let suggestion: string | null = null;
+  let best = Infinity;
+
+  for (const c of countries) {
+    if (excluded.has(c.name)) continue;
+    const centroid = turf.centroid(turf.feature(c.geometry as Geometry));
+    const d = turf.distance(center, centroid, { units: "kilometers" });
+    if (d < best) {
+      best = d;
+      suggestion = c.name;
+    }
+  }
+
+  return suggestion;
+}
+
 export interface CountryMatch {
   name: string;
   distanceKm: number;
@@ -139,6 +206,7 @@ export interface NearbyResult {
   targetKm: number;
   tolerance: number;
   matches: CountryMatch[];
+  midpointSuggestion: string | null;
 }
 
 export async function findCountriesNearby(
@@ -167,7 +235,13 @@ export async function findCountriesNearby(
 
   matches.sort((a, b) => a.distanceKm - b.distanceKm);
 
-  return { sourceCountry: source.name, targetKm: km, tolerance, matches };
+  const midpointSuggestion = computeMidpointSuggestion(
+    countries,
+    source.name,
+    matches.map((m) => m.name),
+  );
+
+  return { sourceCountry: source.name, targetKm: km, tolerance, matches, midpointSuggestion };
 }
 
 /**
@@ -210,7 +284,6 @@ export async function findNearestResultKm(
 ): Promise<NearbyResult> {
   const allDistances = await getAllDistancesFrom(country);
 
-  // Find the country whose distance is closest to targetKm
   let closest = allDistances[0];
   for (const d of allDistances) {
     if (Math.abs(d.distanceKm - targetKm) < Math.abs(closest.distanceKm - targetKm)) {
@@ -218,6 +291,5 @@ export async function findNearestResultKm(
     }
   }
 
-  // Return all countries within ±50 km of that "sweet spot" distance
   return findCountriesNearby(country, closest.distanceKm, 50);
 }
