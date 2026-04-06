@@ -150,9 +150,7 @@ ${parseError || error ? "border-destructive ring-2 ring-destructive/20" : "borde
               <MapPin className="w-10 h-10 text-muted-foreground/20 mb-3" />
               <p className="text-muted-foreground/50 text-sm">Results will appear here</p>
             </motion.div>
-          )}
-
-          {/* Loading */}
+          */}
           {isFetching && (
             <motion.div
               key="loading"
@@ -162,6 +160,7 @@ ${parseError || error ? "border-destructive ring-2 ring-destructive/20" : "borde
               className="space-y-3"
             >
               {Array.from({ length: 6 }).map((_, i) => (
+                <div
                   key={i}
                   className="h-14 rounded-lg bg-muted/40 animate-pulse"
                   style={{ animationDelay: `${i * 60}ms` }}
