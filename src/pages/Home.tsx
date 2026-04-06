@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { Search, Globe, X, RefreshCw, Compass, Star, Lightbulb } from "lucide-react";
+import { Search, Globe, X, RefreshCw, Compass, Star, Lightbulb, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -7,6 +7,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch";
 import { findCountriesNearby, findNearestResultKm, type NearbyResult } from "@/lib/geo";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -48,6 +49,8 @@ function GuessCard({
   isNewest: boolean;
 }) {
   const { result } = entry;
+  const confirmedMatches = result.matches.filter((m) => m.confirmed);
+  const hasConfirmed = confirmedMatches.length > 0;
 
   return (
     <motion.div
@@ -87,30 +90,56 @@ function GuessCard({
         </button>
       </div>
 
+      {/* "Is this it?" banner for confirmed countries */}
+      {hasConfirmed && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="mb-2.5 flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+            {confirmedMatches.length === 1
+              ? `Is it ${confirmedMatches[0].name}?`
+              : `Possible: ${confirmedMatches.map((m) => m.name).join(", ")}`}
+          </span>
+          <span className="text-xs text-emerald-600/60 dark:text-emerald-500/60">
+            verified distance
+          </span>
+        </motion.div>
+      )}
+
       {/* Country chips */}
       {result.matches.length === 0 ? (
         <p className="text-xs text-muted-foreground/60 italic">No countries in this range</p>
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {result.matches.map((m) => {
-            const isConfirmed = crossReferenced.has(m.name);
+            const isCrossRef = crossReferenced.has(m.name);
+            const isConfirmed = m.confirmed;
+
+            let chipClass = "bg-muted/50 border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground";
+            if (isConfirmed) {
+              chipClass = "bg-emerald-500/20 border-emerald-500/50 text-emerald-700 dark:text-emerald-300 font-semibold";
+            } else if (isCrossRef) {
+              chipClass = "bg-amber-400/15 border-amber-400/50 text-amber-600 dark:text-amber-400";
+            }
+
             return (
               <Tooltip key={m.name}>
                 <TooltipTrigger asChild>
                   <span
-                    className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-medium cursor-default transition-colors
-                      ${isConfirmed
-                        ? "bg-amber-400/15 border-amber-400/50 text-amber-600 dark:text-amber-400"
-                        : "bg-muted/50 border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      }`}
+                    className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border cursor-default transition-colors ${chipClass}`}
                   >
-                    {isConfirmed && <Star className="w-2.5 h-2.5 fill-current" />}
+                    {isConfirmed && <Sparkles className="w-2.5 h-2.5 shrink-0" />}
+                    {!isConfirmed && isCrossRef && <Star className="w-2.5 h-2.5 fill-current shrink-0" />}
                     {m.name}
                     {m.touching && <span className="opacity-50 ml-0.5">·B</span>}
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="text-xs">
                   {m.name} · {m.distanceKm.toLocaleString()} km away
+                  {isConfirmed && " (verified)"}
                 </TooltipContent>
               </Tooltip>
             );
@@ -140,6 +169,8 @@ export default function Home() {
   const [guesses, setGuesses] = useState<GuessEntry[]>([]);
   const [tolerance, setTolerance] = useState(50);
   const [isFindingNearest, setIsFindingNearest] = useState(false);
+  const [autoFindNearest, setAutoFindNearest] = useState(false);
+  const autoFindTriggeredRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // ── Main search query ──────────────────────────────────────────────────────
@@ -159,6 +190,29 @@ export default function Home() {
       return [{ id: crypto.randomUUID(), result: data }, ...prev];
     });
   }, [data, isFetching]);
+
+  // ── Auto-find nearest when toggle is on and result is empty ───────────────
+  const handleFindNearest = useCallback(async (sourceQuery?: { country: string; km: number }) => {
+    const q = sourceQuery ?? query;
+    if (!q || isFindingNearest) return;
+    setIsFindingNearest(true);
+    try {
+      const nearest = await findNearestResultKm(q.country, q.km);
+      setInputValue(`${nearest.sourceCountry} ${nearest.targetKm}`);
+      setQuery({ country: nearest.sourceCountry, km: nearest.targetKm });
+    } finally {
+      setIsFindingNearest(false);
+    }
+  }, [query, isFindingNearest]);
+
+  useEffect(() => {
+    if (!data || isFetching || isFindingNearest || !autoFindNearest) return;
+    if (data.matches.length > 0) return;
+    const key = guessKey(data);
+    if (autoFindTriggeredRef.current === key) return;
+    autoFindTriggeredRef.current = key;
+    handleFindNearest({ country: data.sourceCountry, km: data.targetKm });
+  }, [data, isFetching, isFindingNearest, autoFindNearest, handleFindNearest]);
 
   // ── Cross-referencing ──────────────────────────────────────────────────────
   const crossReferenced = useMemo<Set<string>>(() => {
@@ -203,33 +257,21 @@ export default function Home() {
     setQuery(null);
     setInputValue("");
     setParseError(false);
+    autoFindTriggeredRef.current = null;
     inputRef.current?.focus();
   }, []);
 
-  // ── Find Nearest ───────────────────────────────────────────────────────────
   const mostRecentGuess = guesses[0] ?? null;
-  const showFindNearest =
+  const showFindNearestButton =
     !isFetching &&
     !isFindingNearest &&
+    !autoFindNearest &&
     mostRecentGuess?.result.matches.length === 0;
-
-  const handleFindNearest = async () => {
-    if (!query || isFindingNearest) return;
-    setIsFindingNearest(true);
-    try {
-      const nearest = await findNearestResultKm(query.country, query.km);
-      setInputValue(`${nearest.sourceCountry} ${nearest.targetKm}`);
-      setQuery({ country: nearest.sourceCountry, km: nearest.targetKm });
-    } finally {
-      setIsFindingNearest(false);
-    }
-  };
 
   const isActive = isFetching || isFindingNearest;
 
   return (
     <div className="min-h-[100dvh] w-full flex flex-col items-center py-14 px-4 bg-background relative overflow-hidden">
-      {/* Subtle globe grid background */}
       <div className="absolute inset-0 pointer-events-none opacity-[0.025]">
         <svg viewBox="0 0 800 800" className="w-full h-full" fill="none" stroke="currentColor" strokeWidth="1">
           <circle cx="400" cy="400" r="120" />
@@ -295,23 +337,34 @@ export default function Home() {
             </button>
           </div>
 
-          {/* Tolerance picker */}
-          <div className="flex items-center gap-2 px-1">
-            <span className="text-xs text-muted-foreground shrink-0">±km tolerance:</span>
-            <div className="flex gap-1">
-              {TOLERANCE_OPTIONS.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTolerance(t)}
-                  className={`text-xs px-2 py-0.5 rounded-md font-medium transition-colors
-                    ${tolerance === t
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
-                >
-                  {t}
-                </button>
-              ))}
+          {/* Controls row: tolerance + auto-find toggle */}
+          <div className="flex items-center justify-between gap-3 px-1 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground shrink-0">±km:</span>
+              <div className="flex gap-1">
+                {TOLERANCE_OPTIONS.map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTolerance(t)}
+                    className={`text-xs px-2 py-0.5 rounded-md font-medium transition-colors
+                      ${tolerance === t
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Auto-find nearest</span>
+              <Switch
+                checked={autoFindNearest}
+                onCheckedChange={setAutoFindNearest}
+                aria-label="Auto-find nearest country"
+              />
             </div>
           </div>
 
@@ -361,7 +414,7 @@ export default function Home() {
 
         {/* ── Loading skeleton ─────────────────────────────────────────────── */}
         <AnimatePresence>
-          {isFetching && (
+          {isActive && (
             <motion.div
               key="skeleton"
               initial={{ opacity: 0 }}
@@ -372,6 +425,12 @@ export default function Home() {
               <div className="flex items-center gap-2">
                 <div className="h-4 w-28 rounded bg-muted animate-pulse" />
                 <div className="h-4 w-16 rounded bg-muted animate-pulse" />
+                {isFindingNearest && (
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Compass className="w-3 h-3 animate-spin" />
+                    Scanning distances…
+                  </span>
+                )}
               </div>
               <div className="flex gap-1.5">
                 {[60, 80, 70, 90, 55].map((w, i) => (
@@ -386,9 +445,9 @@ export default function Home() {
           )}
         </AnimatePresence>
 
-        {/* ── Find Nearest ─────────────────────────────────────────────────── */}
+        {/* ── Manual find-nearest button (only shown when auto-find is off) ── */}
         <AnimatePresence>
-          {showFindNearest && (
+          {showFindNearestButton && (
             <motion.div
               key="find-nearest"
               initial={{ opacity: 0, y: 6 }}
@@ -403,15 +462,14 @@ export default function Home() {
                 </span>
               </p>
               <button
-                onClick={handleFindNearest}
-                disabled={isFindingNearest}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary/10 border border-primary/30 text-primary text-sm font-semibold hover:bg-primary/20 disabled:opacity-50 transition-colors"
+                onClick={() => handleFindNearest()}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary/10 border border-primary/30 text-primary text-sm font-semibold hover:bg-primary/20 transition-colors"
               >
                 <Compass className="w-4 h-4" />
-                {isFindingNearest ? "Scanning all distances…" : "Find Nearest Country"}
+                Find Nearest Country
               </button>
               <p className="text-xs text-muted-foreground/50">
-                Scans every country and snaps to the nearest real distance
+                Or toggle Auto-find to do this automatically
               </p>
             </motion.div>
           )}
@@ -444,7 +502,7 @@ export default function Home() {
 
         {/* ── Idle empty state ─────────────────────────────────────────────── */}
         <AnimatePresence>
-          {guesses.length === 0 && !isFetching && !error && (
+          {guesses.length === 0 && !isActive && !error && (
             <motion.div
               key="idle"
               initial={{ opacity: 0 }}
