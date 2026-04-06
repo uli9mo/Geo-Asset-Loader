@@ -233,7 +233,7 @@ export default function Home() {
             Border Search
           </h1>
           <p className="text-muted-foreground text-base">
-            Type <span className="font-mono text-foreground/70">Country&nbsp;KM</span> and hit Enter — find countries at that distance.
+            Type <span className="font-mono text-foreground/70">Country&nbsp;KM</span> and hit Enter to find countries at that distance.
           </p>
         </div>
 
@@ -285,7 +285,7 @@ export default function Home() {
                 exit={{ opacity: 0 }}
                 className="text-xs text-destructive ml-1 flex items-center gap-1"
               >
-                Format: <span className="font-mono font-semibold">Country&nbsp;KM</span> — e.g. <span className="font-mono font-semibold">France&nbsp;550</span>
+                Format: <span className="font-mono font-semibold">Country&nbsp;KM</span> e.g. <span className="font-mono font-semibold">France&nbsp;550</span>
               </motion.p>
             )}
           </AnimatePresence>
