@@ -15,24 +15,109 @@ import { findCountriesNearby, findNearestResultKm, type NearbyResult } from "@/l
 interface GuessEntry {
   id: string;
   result: NearbyResult;
+  isDirectInput: boolean;
+}
+
+interface ActiveQuery {
+  country: string;
+  km: number;
+  direct: boolean;
 }
 
 const TOLERANCE_OPTIONS = [25, 50, 75, 100, 150, 200];
+
+// ─── Compass helpers ─────────────────────────────────────────────────────────
+
+type CompassDir = "N" | "NE" | "E" | "SE" | "S" | "SW" | "W" | "NW";
+
+function bearingToDir(deg: number): CompassDir {
+  const n = ((deg % 360) + 360) % 360;
+  if (n >= 337.5 || n < 22.5) return "N";
+  if (n < 67.5) return "NE";
+  if (n < 112.5) return "E";
+  if (n < 157.5) return "SE";
+  if (n < 202.5) return "S";
+  if (n < 247.5) return "SW";
+  if (n < 292.5) return "W";
+  return "NW";
+}
+
+// 3×3 compass grid: empty string = center (clear)
+const COMPASS_GRID: ReadonlyArray<ReadonlyArray<CompassDir | "">> = [
+  ["NW", "N", "NE"],
+  ["W",  "",  "E" ],
+  ["SW", "S", "SE"],
+];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function parseInput(raw: string): { country: string; km: number } | null {
   const trimmed = raw.trim();
-  const match = trimmed.match(/^(.+?)\s+(\d+(?:\.\d+)?)$/);
+  const match = trimmed.match(/^(.+?)\s+([\d,]+(?:\.\d+)?)$/);
   if (!match) return null;
   const country = match[1].trim();
-  const km = parseFloat(match[2]);
+  const km = parseFloat(match[2].replace(/,/g, ""));
   if (!country || isNaN(km) || km < 0) return null;
   return { country, km };
 }
 
 function guessKey(r: NearbyResult) {
   return `${r.sourceCountry}|${r.targetKm}|${r.tolerance}`;
+}
+
+// ─── Direction Picker ────────────────────────────────────────────────────────
+
+function DirectionPicker({
+  selected,
+  onChange,
+}: {
+  selected: CompassDir | null;
+  onChange: (dir: CompassDir | null) => void;
+}) {
+  return (
+    <div className="mt-2.5 flex items-center gap-3">
+      <span className="text-xs text-muted-foreground/60 shrink-0 leading-none">Direction hint</span>
+      <div className="grid grid-cols-3 gap-0.5" style={{ width: 72 }}>
+        {COMPASS_GRID.map((row, ri) =>
+          row.map((dir, ci) => {
+            if (dir === "") {
+              return (
+                <button
+                  key={`${ri}-${ci}`}
+                  onClick={() => onChange(null)}
+                  title="Clear direction"
+                  className={`w-6 h-6 flex items-center justify-center rounded text-xs transition-colors
+                    ${selected ? "text-muted-foreground hover:text-foreground" : "text-muted-foreground/30"}`}
+                >
+                  ·
+                </button>
+              );
+            }
+            const isActive = selected === dir;
+            return (
+              <button
+                key={`${ri}-${ci}`}
+                onClick={() => onChange(isActive ? null : (dir as CompassDir))}
+                title={dir}
+                className={`w-6 h-6 flex items-center justify-center rounded text-[10px] font-bold transition-colors
+                  ${isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+              >
+                {dir}
+              </button>
+            );
+          })
+        )}
+      </div>
+      {selected && (
+        <span className="text-xs text-primary font-semibold">
+          Filtering {selected}
+        </span>
+      )}
+    </div>
+  );
 }
 
 // ─── Guess Card ──────────────────────────────────────────────────────────────
@@ -48,8 +133,13 @@ function GuessCard({
   onRemove: (id: string) => void;
   isNewest: boolean;
 }) {
-  const { result } = entry;
-  const confirmedMatches = result.matches.filter((m) => m.confirmed);
+  const { result, isDirectInput } = entry;
+  const [directionHint, setDirectionHint] = useState<CompassDir | null>(null);
+
+  // Only show confirmed styling when the km was typed directly by the user
+  const confirmedMatches = isDirectInput
+    ? result.matches.filter((m) => m.confirmed)
+    : [];
   const hasConfirmed = confirmedMatches.length > 0;
 
   return (
@@ -90,7 +180,7 @@ function GuessCard({
         </button>
       </div>
 
-      {/* "Is this it?" banner for confirmed countries */}
+      {/* "Could this be it?" banner — only on direct typed inputs */}
       {hasConfirmed && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
@@ -100,11 +190,11 @@ function GuessCard({
           <Sparkles className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
           <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
             {confirmedMatches.length === 1
-              ? `Is it ${confirmedMatches[0].name}?`
-              : `Possible: ${confirmedMatches.map((m) => m.name).join(", ")}`}
+              ? `Could this be ${confirmedMatches[0].name}?`
+              : `Strong candidates: ${confirmedMatches.map((m) => m.name).join(", ")}`}
           </span>
-          <span className="text-xs text-emerald-600/60 dark:text-emerald-500/60">
-            verified distance
+          <span className="text-xs text-emerald-600/50 dark:text-emerald-500/50">
+            (known distance)
           </span>
         </motion.div>
       )}
@@ -116,7 +206,9 @@ function GuessCard({
         <div className="flex flex-wrap gap-1.5">
           {result.matches.map((m) => {
             const isCrossRef = crossReferenced.has(m.name);
-            const isConfirmed = m.confirmed;
+            const isConfirmed = isDirectInput && m.confirmed;
+            const chipDir = bearingToDir(m.bearingDeg);
+            const isDimmed = directionHint !== null && chipDir !== directionHint;
 
             let chipClass = "bg-muted/50 border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground";
             if (isConfirmed) {
@@ -129,7 +221,8 @@ function GuessCard({
               <Tooltip key={m.name}>
                 <TooltipTrigger asChild>
                   <span
-                    className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border cursor-default transition-colors ${chipClass}`}
+                    className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border cursor-default transition-all ${chipClass}`}
+                    style={{ opacity: isDimmed ? 0.25 : 1 }}
                   >
                     {isConfirmed && <Sparkles className="w-2.5 h-2.5 shrink-0" />}
                     {!isConfirmed && isCrossRef && <Star className="w-2.5 h-2.5 fill-current shrink-0" />}
@@ -138,13 +231,18 @@ function GuessCard({
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="text-xs">
-                  {m.name} · {m.distanceKm.toLocaleString()} km away
-                  {isConfirmed && " (verified)"}
+                  {m.name} · {m.distanceKm.toLocaleString()} km · {chipDir}
+                  {isConfirmed && " · known distance"}
                 </TooltipContent>
               </Tooltip>
             );
           })}
         </div>
+      )}
+
+      {/* Direction picker */}
+      {result.matches.length > 0 && (
+        <DirectionPicker selected={directionHint} onChange={setDirectionHint} />
       )}
 
       {/* Midpoint suggestion */}
@@ -164,7 +262,7 @@ function GuessCard({
 
 export default function Home() {
   const [inputValue, setInputValue] = useState("");
-  const [query, setQuery] = useState<{ country: string; km: number } | null>(null);
+  const [query, setQuery] = useState<ActiveQuery | null>(null);
   const [parseError, setParseError] = useState(false);
   const [guesses, setGuesses] = useState<GuessEntry[]>([]);
   const [tolerance, setTolerance] = useState(50);
@@ -172,6 +270,9 @@ export default function Home() {
   const [autoFindNearest, setAutoFindNearest] = useState(false);
   const autoFindTriggeredRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Keep a ref so the save-effect can read query.direct without re-running on every query change
+  const queryRef = useRef<ActiveQuery | null>(null);
+  useEffect(() => { queryRef.current = query; }, [query]);
 
   // ── Main search query ──────────────────────────────────────────────────────
   const { data, isFetching, error } = useQuery({
@@ -181,17 +282,18 @@ export default function Home() {
     retry: false,
   });
 
-  // Auto-save successful results to guess history
+  // Auto-save results to guess history
   useEffect(() => {
     if (!data || isFetching) return;
+    const isDirect = queryRef.current?.direct ?? false;
     setGuesses((prev) => {
       const key = guessKey(data);
       if (prev.some((g) => guessKey(g.result) === key)) return prev;
-      return [{ id: crypto.randomUUID(), result: data }, ...prev];
+      return [{ id: crypto.randomUUID(), result: data, isDirectInput: isDirect }, ...prev];
     });
   }, [data, isFetching]);
 
-  // ── Auto-find nearest when toggle is on and result is empty ───────────────
+  // ── Find nearest ───────────────────────────────────────────────────────────
   const handleFindNearest = useCallback(async (sourceQuery?: { country: string; km: number }) => {
     const q = sourceQuery ?? query;
     if (!q || isFindingNearest) return;
@@ -199,12 +301,14 @@ export default function Home() {
     try {
       const nearest = await findNearestResultKm(q.country, q.km);
       setInputValue(`${nearest.sourceCountry} ${nearest.targetKm}`);
-      setQuery({ country: nearest.sourceCountry, km: nearest.targetKm });
+      // direct: false — user did NOT type this km
+      setQuery({ country: nearest.sourceCountry, km: nearest.targetKm, direct: false });
     } finally {
       setIsFindingNearest(false);
     }
   }, [query, isFindingNearest]);
 
+  // Auto-find: trigger when toggle is on and result is empty
   useEffect(() => {
     if (!data || isFetching || isFindingNearest || !autoFindNearest) return;
     if (data.matches.length > 0) return;
@@ -235,7 +339,8 @@ export default function Home() {
       return;
     }
     setParseError(false);
-    setQuery(parsed);
+    // direct: true — user typed and pressed Search
+    setQuery({ ...parsed, direct: true });
   }, [inputValue]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -445,7 +550,7 @@ export default function Home() {
           )}
         </AnimatePresence>
 
-        {/* ── Manual find-nearest button (only shown when auto-find is off) ── */}
+        {/* ── Manual find-nearest button ────────────────────────────────────── */}
         <AnimatePresence>
           {showFindNearestButton && (
             <motion.div

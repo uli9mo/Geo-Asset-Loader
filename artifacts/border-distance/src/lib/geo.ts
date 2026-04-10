@@ -1,5 +1,5 @@
 import * as turf from "@turf/turf";
-import type { FeatureCollection, Geometry } from "geojson";
+import type { FeatureCollection, Geometry, Feature, Point } from "geojson";
 
 const WORLD_GEOJSON_URL =
   "https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json";
@@ -10,14 +10,12 @@ const EXCLUDED_COUNTRIES = new Set([
   "Palau",
   "Kiribati",
   "Micronesia",
-  // Micro-states/city-states
   "Vatican",
   "Vatican City",
   "Holy See",
   "San Marino",
   "Liechtenstein",
   "Andorra",
-  // Small island nations
   "Marshall Islands",
   "Marshall Is.",
   "Saint Kitts and Nevis",
@@ -34,16 +32,15 @@ const EXCLUDED_COUNTRIES = new Set([
   "Comoros",
   "Timor-Leste",
   "East Timor",
-  // Partially recognized
   "Northern Cyprus",
   "N. Cyprus",
 ]);
 
 /**
  * Known-correct distances where the GeoJSON polygon data is slightly inaccurate.
- * Key is the source country name in lowercase.
- * When a search lands within tolerance of a known km, the target country is
- * injected as a "confirmed" result even if the polygon math misses it.
+ * Key: lowercase source country name.
+ * These are only injected when the user typed the distance directly — the UI
+ * decides whether to surface `confirmed: true` based on isDirectInput.
  */
 const KNOWN_DISTANCES: Record<string, Array<{ country: string; km: number }>> = {
   china: [
@@ -57,6 +54,7 @@ const KNOWN_DISTANCES: Record<string, Array<{ country: string; km: number }>> = 
     { country: "Moldova", km: 3587 },
     { country: "Bhutan", km: 2 },
     { country: "Bahrain", km: 2535 },
+    { country: "Seychelles", km: 4554 },
   ],
 };
 
@@ -174,6 +172,16 @@ function sampleRing(ring: number[][], out: number[][]): void {
   }
 }
 
+function getCentroid(feature: CountryFeature) {
+  return turf.centroid(turf.feature(feature.geometry as Geometry));
+}
+
+/** Returns bearing in [0, 360) degrees clockwise from north */
+function computeBearing(from: Feature<Point>, to: Feature<Point>): number {
+  const raw = turf.bearing(from, to);
+  return ((raw % 360) + 360) % 360;
+}
+
 function computeMidpointSuggestion(
   countries: CountryFeature[],
   sourceCountry: string,
@@ -190,14 +198,11 @@ function computeMidpointSuggestion(
   let sumLng = 0;
   let sumLat = 0;
   for (const f of matchedFeatures) {
-    const centroid = turf.centroid(turf.feature(f.geometry as Geometry));
-    sumLng += centroid.geometry.coordinates[0];
-    sumLat += centroid.geometry.coordinates[1];
+    const c = getCentroid(f);
+    sumLng += c.geometry.coordinates[0];
+    sumLat += c.geometry.coordinates[1];
   }
-  const center = turf.point([
-    sumLng / matchedFeatures.length,
-    sumLat / matchedFeatures.length,
-  ]);
+  const center = turf.point([sumLng / matchedFeatures.length, sumLat / matchedFeatures.length]);
 
   const excluded = new Set([...matchedNames, sourceCountry]);
   let suggestion: string | null = null;
@@ -205,7 +210,7 @@ function computeMidpointSuggestion(
 
   for (const c of countries) {
     if (excluded.has(c.name)) continue;
-    const centroid = turf.centroid(turf.feature(c.geometry as Geometry));
+    const centroid = getCentroid(c);
     const d = turf.distance(center, centroid, { units: "kilometers" });
     if (d < best) {
       best = d;
@@ -220,7 +225,10 @@ export interface CountryMatch {
   name: string;
   distanceKm: number;
   touching: boolean;
+  /** True when the distance is from KNOWN_DISTANCES (GeoJSON inaccuracy correction). */
   confirmed: boolean;
+  /** Bearing in degrees [0,360) clockwise from north, source centroid → target centroid. */
+  bearingDeg: number;
 }
 
 export interface NearbyResult {
@@ -245,13 +253,15 @@ export async function findCountriesNearby(
 
   const lower = km - tolerance;
   const upper = km + tolerance;
+  const sourceCentroid = getCentroid(source);
 
   const matches: CountryMatch[] = [];
   for (const target of countries) {
     if (target.name === source.name) continue;
     const distanceKm = calculateBorderDistanceKm(source, target);
     if (distanceKm >= lower && distanceKm <= upper) {
-      matches.push({ name: target.name, distanceKm, touching: distanceKm === 0, confirmed: false });
+      const bearingDeg = computeBearing(sourceCentroid, getCentroid(target));
+      matches.push({ name: target.name, distanceKm, touching: distanceKm === 0, confirmed: false, bearingDeg });
     }
   }
 
@@ -259,11 +269,13 @@ export async function findCountriesNearby(
   const corrections = KNOWN_DISTANCES[source.name.toLowerCase()] ?? [];
   for (const corr of corrections) {
     if (corr.km < lower || corr.km > upper) continue;
+    const corrTarget = countries.find((c) => c.name === corr.country);
+    const bearingDeg = corrTarget ? computeBearing(sourceCentroid, getCentroid(corrTarget)) : 0;
     const existing = matches.findIndex((m) => m.name === corr.country);
     if (existing >= 0) {
       matches[existing] = { ...matches[existing], confirmed: true };
     } else {
-      matches.push({ name: corr.country, distanceKm: corr.km, touching: corr.km === 0, confirmed: true });
+      matches.push({ name: corr.country, distanceKm: corr.km, touching: corr.km === 0, confirmed: true, bearingDeg });
     }
   }
 

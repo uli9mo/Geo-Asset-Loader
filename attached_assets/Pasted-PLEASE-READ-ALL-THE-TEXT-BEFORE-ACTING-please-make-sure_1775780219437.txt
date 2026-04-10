@@ -1,0 +1,34 @@
+PLEASE READ ALL THE TEXT BEFORE ACTING
+
+
+please make sure that the confirmed gueses only happen WHEN its guessed first not after a toggle of tolerance not after find nearest country ONLY if the number typed in was exactly for example i type in china 8271 
+something for china 8271 should pop up NOT if i
+type in china 8251 but i click find nearest countries and i get china 8271.
+got it?
+please add a new feature which uses colour hex to find the country for the country, because in harder gamemodes you have to calculate BY just rough estimate of distance away AND closest to the border on where it is for example if i choose China in the hard game mode and china is BRIGHT red and the closest border point os northwest then you should know its northwest of china and close because the colour for distance is Bright red to White for how close it is
+
+
+PLEASE provide the image with the colour of the hex nearby the guess so its easier to heck which one
+please ask to provide which direction its closest to for example the hidden country is ireland and i chose china so it would be northwest
+make an option for just north south east west cause it could just be straight there doesnt have to be one of the combinations anywyas ug et the point
+please note that the confirmed guesses are not ALWAYS true since 2 countries COULD share the same border distance 4554 = seychelles too btw china 4554 = seychelles i repeat 
+
+ 
+(VERY FAR)#fffcff is the HEX of the colour between 7224 and more
+
+
+
+((FAR) the one in brackets mean what its labelled and the colour/hex it got so this got labeled far and it got that hex) #fff2f4 = 2882- 6899
+
+(CLOSE) #ff9aaa = 653 - 2359
+
+(VERY CLOSE) #ff5e74 0-528
+
+
+actually MY BAD SCRAP THE COLOUR IDEA SCRAP THE COLOUR IDEA I REPEAT! SCRAP THE COLOUR IDEA since the KM and labels DO NOT match
+
+the colour changes ever so slightly based on the km distsance instead give a chooser slider thing that letsthe user choose which colour is the closest to the one they got chosen let them provide a laabel first and after they provide a label u can use that to give a better choser like if i choose slightly red u can give out MORE slightly red choices if u want to make it more accurate but idk if we need to go that far
+
+so basically when u got a rough estimate choose the country you believe that would be closest/give the best guess/ or IS the country now i do think theres one problem its the amount the colour changes like it could be rated 1-100000 and barely change colour so try your best
+
+
