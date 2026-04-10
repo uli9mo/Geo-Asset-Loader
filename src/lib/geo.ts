@@ -293,6 +293,37 @@ export async function findCountriesNearby(
   return { sourceCountry: source.name, targetKm: km, tolerance, matches, midpointSuggestion };
 }
 
+export interface RangeMatch {
+  name: string;
+  distanceKm: number;
+  bearingDeg: number;
+}
+
+/** Find all countries within [minKm, maxKm] from a source country, with bearings. */
+export async function findCountriesByRange(
+  country: string,
+  minKm: number,
+  maxKm: number,
+): Promise<RangeMatch[]> {
+  const countries = await loadCountries();
+  const source = findCountry(country, countries);
+  if (!source) throw new Error(`Country not found: "${country}"`);
+
+  const sourceCentroid = getCentroid(source);
+  const results: RangeMatch[] = [];
+
+  for (const target of countries) {
+    if (target.name === source.name) continue;
+    const distanceKm = calculateBorderDistanceKm(source, target);
+    if (distanceKm >= minKm && distanceKm <= maxKm) {
+      const bearingDeg = computeBearing(sourceCentroid, getCentroid(target));
+      results.push({ name: target.name, distanceKm, bearingDeg });
+    }
+  }
+
+  return results;
+}
+
 const allDistancesCache = new Map<string, { name: string; distanceKm: number }[]>();
 
 export async function getAllDistancesFrom(
