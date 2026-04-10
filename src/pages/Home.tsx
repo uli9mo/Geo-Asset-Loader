@@ -56,74 +56,72 @@ const COMPASS_GRID: ReadonlyArray<ReadonlyArray<CompassDir | "">> = [
 
 // ─── Colour estimation helpers ───────────────────────────────────────────────
 
-const LABEL_PRESETS: Record<string, { hex: string; km: number; range: [number, number] }> = {
-  "Very Close": { hex: "#ff5e74", km: 264,  range: [0,    528]  },
-  "Close":      { hex: "#ff9aaa", km: 1506, range: [400,  2800] },
-  "Far":        { hex: "#fff2f4", km: 4890, range: [2400, 7000] },
-  "Very Far":   { hex: "#fffcff", km: 9000, range: [6500, 20000] },
+/** Label quick-jump targets (km midpoints) */
+const LABEL_PRESETS: Record<string, { km: number; range: [number, number] }> = {
+  "Very Close": { km: 264,  range: [0,    528]  },
+  "Close":      { km: 1506, range: [530,  2880] },
+  "Far":        { km: 4890, range: [2882, 6900] },
+  "Very Far":   { km: 9000, range: [6900, 20000] },
 };
 
+/** Slider max km — colour plateaus at ~7 224 km, but distance can be higher */
+const SLIDER_MAX = 20000;
+
 /**
- * Piecewise-linear anchor points: { km, g, b }
- * R is always 255 in this gradient.
- * Derived from the label anchors provided by the user.
+ * Piecewise-linear colour anchors (R=255 throughout).
+ * Positions on the slider gradient.
  */
-const ANCHORS = [
-  { km: 0,    g: 94,  b: 116 },  // #ff5e74  Very Close
-  { km: 653,  g: 154, b: 170 },  // #ff9aaa  Close
-  { km: 2882, g: 242, b: 244 },  // #fff2f4  Far
-  { km: 7224, g: 252, b: 255 },  // #fffcff  Very Far (plateau beyond here)
+const COLOR_ANCHORS = [
+  { km: 0,    r: 255, g: 94,  b: 116 },  // #ff5e74  Very Close
+  { km: 653,  r: 255, g: 154, b: 170 },  // #ff9aaa  Close
+  { km: 2882, r: 255, g: 242, b: 244 },  // #fff2f4  Far
+  { km: 7224, r: 255, g: 252, b: 255 },  // #fffcff  Very Far (plateau)
 ];
 
-function colorToKmEstimate(hex: string): { km: number; range: [number, number]; label: string } {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-
-  // If R is far from 255 the colour is very different — treat as unknown
-  if (r < 200) return { km: 3000, range: [0, 20000], label: "Unknown" };
-
-  // Clamp g to known range
-  const gClamped = Math.max(ANCHORS[0].g, Math.min(ANCHORS[ANCHORS.length - 1].g, g));
-
-  // Find which segment g falls into
-  let km = 0;
-  for (let i = 0; i < ANCHORS.length - 1; i++) {
-    const lo = ANCHORS[i];
-    const hi = ANCHORS[i + 1];
-    if (gClamped >= lo.g && gClamped <= hi.g) {
-      const t = (gClamped - lo.g) / (hi.g - lo.g);
-      km = Math.round(lo.km + t * (hi.km - lo.km));
-      break;
+/** Forward map: km → interpolated hex colour */
+function kmToColor(km: number): string {
+  const clamped = Math.max(0, Math.min(7224, km));
+  for (let i = 0; i < COLOR_ANCHORS.length - 1; i++) {
+    const lo = COLOR_ANCHORS[i];
+    const hi = COLOR_ANCHORS[i + 1];
+    if (clamped >= lo.km && clamped <= hi.km) {
+      const t = (clamped - lo.km) / (hi.km - lo.km);
+      const r = Math.round(lo.r + t * (hi.r - lo.r));
+      const g = Math.round(lo.g + t * (hi.g - lo.g));
+      const b = Math.round(lo.b + t * (hi.b - lo.b));
+      return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
     }
   }
-
-  // Beyond plateau
-  if (g >= ANCHORS[ANCHORS.length - 1].g) km = 7224;
-
-  // Tolerance grows as colour becomes more saturated (less reliable at far distances)
-  const tFactor = (g - ANCHORS[0].g) / (ANCHORS[ANCHORS.length - 1].g - ANCHORS[0].g);
-  const tol = Math.round(300 + tFactor * 2700); // 300 km near, 3000 km far
-
-  // Label
-  let label = "Very Close";
-  if (km > 528) label = "Close";
-  if (km > 2359) label = "Far";
-  if (km > 6899) label = "Very Far";
-
-  // Also factor in b channel for b-heavy colours (slight correction)
-  const bClamped = Math.max(ANCHORS[0].b, Math.min(ANCHORS[ANCHORS.length - 1].b, b));
-  const bFactor = (bClamped - ANCHORS[0].b) / (ANCHORS[ANCHORS.length - 1].b - ANCHORS[0].b);
-  const blendedFactor = (tFactor + bFactor) / 2;
-  const kmBlended = Math.round(blendedFactor * 7224);
-  const kmFinal = Math.round((km + kmBlended) / 2);
-
-  return {
-    km: kmFinal,
-    range: [Math.max(0, kmFinal - tol), kmFinal + tol],
-    label,
-  };
+  return "#fffcff";
 }
+
+/** Tolerance grows as km increases (colour barely changes at far distances) */
+function kmTolerance(km: number): number {
+  if (km <= 528)  return 250;
+  if (km <= 2359) return 500;
+  if (km <= 6899) return 1200;
+  return 3500;
+}
+
+function kmLabel(km: number): string {
+  if (km <= 528)  return "Very Close";
+  if (km <= 2359) return "Close";
+  if (km <= 6899) return "Far";
+  return "Very Far";
+}
+
+/**
+ * CSS gradient string matching the colour scale.
+ * Percentages = km / SLIDER_MAX * 100.
+ */
+const SLIDER_GRADIENT = (() => {
+  const stops = COLOR_ANCHORS.map(
+    (a) => `${kmToColor(a.km)} ${((a.km / SLIDER_MAX) * 100).toFixed(1)}%`,
+  );
+  // Extend last colour to 100%
+  stops.push(`${kmToColor(7224)} 100%`);
+  return `linear-gradient(to right, ${stops.join(", ")})`;
+})();
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -202,21 +200,19 @@ function DirectionPicker({
 
 function ColourEstimator({ crossReferenced }: { crossReferenced: Set<string> }) {
   const [source, setSource] = useState("");
-  const [activeLabel, setActiveLabel] = useState<string | null>(null);
-  const [colorHex, setColorHex] = useState("#ff9aaa");
+  const [sliderKm, setSliderKm] = useState(1506); // default: midpoint of "Close"
   const [direction, setDirection] = useState<CompassDir | null>(null);
   const [searched, setSearched] = useState(false);
 
-  const { km, range, label: autoLabel } = useMemo(() => colorToKmEstimate(colorHex), [colorHex]);
-
-  const queryKey = useMemo(
-    () => ["colorRange", source.trim().toLowerCase(), range[0], range[1]],
-    [source, range],
-  );
+  const colorHex = useMemo(() => kmToColor(sliderKm), [sliderKm]);
+  const tol = useMemo(() => kmTolerance(sliderKm), [sliderKm]);
+  const label = useMemo(() => kmLabel(sliderKm), [sliderKm]);
+  const rangeMin = Math.max(0, sliderKm - tol);
+  const rangeMax = sliderKm + tol;
 
   const { data: rawMatches, isFetching, error } = useQuery<RangeMatch[]>({
-    queryKey,
-    queryFn: () => findCountriesByRange(source.trim(), range[0], range[1]),
+    queryKey: ["colorRange", source.trim().toLowerCase(), rangeMin, rangeMax],
+    queryFn: () => findCountriesByRange(source.trim(), rangeMin, rangeMax),
     enabled: searched && !!source.trim(),
     retry: false,
     staleTime: 1000 * 60 * 5,
@@ -234,40 +230,25 @@ function ColourEstimator({ crossReferenced }: { crossReferenced: Set<string> }) 
       .sort((a, b) => {
         if (a.dirMatch !== b.dirMatch) return a.dirMatch ? -1 : 1;
         if (a.isCross !== b.isCross) return a.isCross ? -1 : 1;
-        return Math.abs(a.distanceKm - km) - Math.abs(b.distanceKm - km);
+        return Math.abs(a.distanceKm - sliderKm) - Math.abs(b.distanceKm - sliderKm);
       });
-  }, [rawMatches, direction, crossReferenced, km]);
-
-  function handleLabelClick(lbl: string) {
-    setActiveLabel(lbl);
-    setColorHex(LABEL_PRESETS[lbl].hex);
-  }
-
-  function handleColorChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setActiveLabel(null);
-    setColorHex(e.target.value);
-  }
-
-  function handleSearch() {
-    if (!source.trim()) return;
-    setSearched(true);
-  }
-
-  // Re-run when source or range changes after initial search
-  useEffect(() => {
-    if (searched && source.trim()) setSearched(true);
-  }, [source, range]);
+  }, [rawMatches, direction, crossReferenced, sliderKm]);
 
   const directionMatches = sortedResults.filter((r) => r.dirMatch);
-  const topGuesses = directionMatches.slice(0, 10);
-  const restGuesses = direction ? [] : sortedResults.slice(10);
+  const topGuesses = direction ? directionMatches.slice(0, 12) : sortedResults.slice(0, 12);
+  const hiddenCount = (direction ? directionMatches.length : sortedResults.length) - topGuesses.length;
+
+  // Active label (whichever range the slider is in)
+  const activeLabel = Object.entries(LABEL_PRESETS).find(
+    ([, v]) => sliderKm >= v.range[0] && sliderKm <= v.range[1],
+  )?.[0] ?? "Very Far";
 
   return (
     <div className="rounded-xl border border-border/60 bg-card/50 px-4 py-4 space-y-4">
       <div className="flex items-center gap-2">
         <Palette className="w-4 h-4 text-primary/70" />
         <span className="text-sm font-semibold text-foreground">Colour Estimator</span>
-        <span className="text-xs text-muted-foreground/60">— use the colour shown in the game to estimate distance</span>
+        <span className="text-xs text-muted-foreground/60">— drag the slider to match the colour you see in the game</span>
       </div>
 
       {/* Source country */}
@@ -282,14 +263,14 @@ function ColourEstimator({ crossReferenced }: { crossReferenced: Set<string> }) 
         />
       </div>
 
-      {/* Label picker */}
+      {/* Label quick-jumps */}
       <div className="flex items-start gap-2">
-        <span className="text-xs text-muted-foreground shrink-0 w-16 pt-1">Label:</span>
+        <span className="text-xs text-muted-foreground shrink-0 w-16 pt-1">Jump to:</span>
         <div className="flex flex-wrap gap-1.5">
-          {Object.keys(LABEL_PRESETS).map((lbl) => (
+          {Object.entries(LABEL_PRESETS).map(([lbl, v]) => (
             <button
               key={lbl}
-              onClick={() => handleLabelClick(lbl)}
+              onClick={() => setSliderKm(v.km)}
               className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors
                 ${activeLabel === lbl
                   ? "bg-primary text-primary-foreground border-primary"
@@ -301,52 +282,78 @@ function ColourEstimator({ crossReferenced }: { crossReferenced: Set<string> }) 
         </div>
       </div>
 
-      {/* Colour picker + preview */}
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-muted-foreground shrink-0 w-16">Colour:</span>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+      {/* ── Gradient slider ── */}
+      <div className="flex items-start gap-2">
+        <span className="text-xs text-muted-foreground shrink-0 w-16 pt-3">Colour:</span>
+        <div className="flex-1 space-y-2">
+          {/* Colour swatch + readout */}
+          <div className="flex items-center gap-3">
+            <div
+              className="w-9 h-9 rounded-lg border border-border/60 shadow-inner shrink-0"
+              style={{ backgroundColor: colorHex }}
+              title={colorHex}
+            />
+            <div>
+              <span className="text-sm font-semibold text-foreground">
+                ~{sliderKm.toLocaleString()} km
+              </span>
+              <span className="ml-2 text-xs text-muted-foreground/70">
+                ({label}, ±{tol.toLocaleString()} km)
+              </span>
+            </div>
+            <span className="text-xs font-mono text-muted-foreground/50 ml-auto">{colorHex}</span>
+          </div>
+
+          {/* The gradient slider itself */}
+          <div className="relative h-9 flex items-center select-none">
+            {/* Gradient track (visual layer) */}
+            <div
+              className="absolute inset-x-0 h-4 rounded-full shadow-inner border border-border/40"
+              style={{ background: SLIDER_GRADIENT }}
+            />
+            {/* Range input (interaction layer) */}
             <input
-              type="color"
-              value={colorHex}
-              onChange={handleColorChange}
-              className="w-10 h-10 rounded-lg border border-border cursor-pointer bg-transparent p-0.5"
-              title="Pick the colour you see in the game"
+              type="range"
+              min={0}
+              max={SLIDER_MAX}
+              step={25}
+              value={sliderKm}
+              onChange={(e) => { setSliderKm(Number(e.target.value)); setSearched(false); }}
+              className="absolute inset-x-0 w-full appearance-none bg-transparent cursor-pointer
+                [&::-webkit-slider-runnable-track]:bg-transparent
+                [&::-webkit-slider-thumb]:appearance-none
+                [&::-webkit-slider-thumb]:w-5
+                [&::-webkit-slider-thumb]:h-5
+                [&::-webkit-slider-thumb]:rounded-full
+                [&::-webkit-slider-thumb]:bg-white
+                [&::-webkit-slider-thumb]:border-2
+                [&::-webkit-slider-thumb]:border-primary
+                [&::-webkit-slider-thumb]:shadow-md
+                [&::-webkit-slider-thumb]:cursor-grab
+                [&::-webkit-slider-thumb]:active:cursor-grabbing
+                [&::-moz-range-track]:bg-transparent
+                [&::-moz-range-thumb]:appearance-none
+                [&::-moz-range-thumb]:w-5
+                [&::-moz-range-thumb]:h-5
+                [&::-moz-range-thumb]:rounded-full
+                [&::-moz-range-thumb]:bg-white
+                [&::-moz-range-thumb]:border-2
+                [&::-moz-range-thumb]:border-primary
+                [&::-moz-range-thumb]:shadow-md
+                [&::-moz-range-thumb]:cursor-grab"
+              aria-label="Colour distance slider"
             />
           </div>
-          <div
-            className="w-8 h-8 rounded-lg border border-border/60 shadow-inner"
-            style={{ backgroundColor: colorHex }}
-          />
-          <span className="text-xs font-mono text-muted-foreground">{colorHex}</span>
-          <span className="text-xs text-muted-foreground/60">→</span>
-          <span className="text-xs font-semibold text-foreground">
-            ~{km.toLocaleString()} km
-          </span>
-          <span className="text-xs text-muted-foreground/60">
-            ({autoLabel}, ±{Math.round((range[1] - range[0]) / 2).toLocaleString()} km)
-          </span>
-        </div>
-      </div>
 
-      {/* Range bar visualisation */}
-      <div className="flex items-center gap-2 pl-[4.5rem]">
-        <div className="flex-1 h-2 rounded-full bg-muted relative overflow-hidden">
-          {/* gradient strip */}
-          <div
-            className="absolute inset-0 rounded-full"
-            style={{ background: "linear-gradient(to right, #ff5e74, #ff9aaa, #fff2f4, #fffcff)" }}
-          />
-          {/* selected range window */}
-          <div
-            className="absolute top-0 h-full rounded-full border-2 border-primary bg-primary/20"
-            style={{
-              left: `${Math.min(100, (range[0] / 20000) * 100)}%`,
-              width: `${Math.min(100 - (range[0] / 20000) * 100, ((range[1] - range[0]) / 20000) * 100)}%`,
-            }}
-          />
+          {/* Scale labels */}
+          <div className="flex justify-between text-[10px] text-muted-foreground/50 px-0.5">
+            <span>0 km (touching)</span>
+            <span>Very Close</span>
+            <span>Close</span>
+            <span>Far</span>
+            <span>Very Far →</span>
+          </div>
         </div>
-        <span className="text-[10px] text-muted-foreground/50 shrink-0">20 000 km</span>
       </div>
 
       {/* Direction picker */}
@@ -361,7 +368,7 @@ function ColourEstimator({ crossReferenced }: { crossReferenced: Set<string> }) 
       {/* Find button */}
       <div className="pl-[4.5rem]">
         <button
-          onClick={handleSearch}
+          onClick={() => { if (source.trim()) setSearched(true); }}
           disabled={!source.trim() || isFetching}
           className="px-5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity"
         >
@@ -386,9 +393,7 @@ function ColourEstimator({ crossReferenced }: { crossReferenced: Set<string> }) 
             className="space-y-2"
           >
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-foreground">
-                Best guesses
-              </span>
+              <span className="text-xs font-semibold text-foreground">Best guesses</span>
               <span className="text-xs text-muted-foreground/60">
                 {direction
                   ? `${directionMatches.length} match${directionMatches.length !== 1 ? "es" : ""} heading ${direction}`
@@ -398,7 +403,7 @@ function ColourEstimator({ crossReferenced }: { crossReferenced: Set<string> }) 
 
             {sortedResults.length === 0 && (
               <p className="text-xs text-muted-foreground/60 italic">
-                No countries found in this range from {source}. Try adjusting the colour or tolerance.
+                No countries found at ~{sliderKm.toLocaleString()} km from {source}. Try moving the slider.
               </p>
             )}
 
@@ -410,32 +415,30 @@ function ColourEstimator({ crossReferenced }: { crossReferenced: Set<string> }) 
                       className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border cursor-default transition-colors
                         ${r.isCross
                           ? "bg-amber-400/15 border-amber-400/50 text-amber-600 dark:text-amber-400"
-                          : i === 0 && r.dirMatch
+                          : i === 0
                           ? "bg-primary/15 border-primary/40 text-primary font-semibold"
                           : "bg-muted/50 border-border/60 text-muted-foreground"}`}
                     >
-                      {i === 0 && r.dirMatch && <Sparkles className="w-2.5 h-2.5 shrink-0" />}
-                      {r.isCross && <Star className="w-2.5 h-2.5 fill-current shrink-0" />}
+                      {i === 0 && <Sparkles className="w-2.5 h-2.5 shrink-0" />}
+                      {r.isCross && i !== 0 && <Star className="w-2.5 h-2.5 fill-current shrink-0" />}
                       {r.name}
                       <span className="opacity-50 ml-0.5">{r.dir}</span>
                     </span>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="text-xs">
                     {r.name} · {r.distanceKm.toLocaleString()} km · {r.dir}
-                    {r.isCross ? " · cross-ref ★" : ""}
+                    {r.isCross ? " · confirmed ★" : ""}
                   </TooltipContent>
                 </Tooltip>
               ))}
-              {restGuesses.length > 0 && (
-                <span className="text-xs text-muted-foreground/50 self-center">
-                  +{restGuesses.length} more
-                </span>
+              {hiddenCount > 0 && (
+                <span className="text-xs text-muted-foreground/50 self-center">+{hiddenCount} more</span>
               )}
             </div>
 
             {topGuesses.length > 0 && (
               <p className="text-xs text-muted-foreground/50">
-                Hover for exact km · Top result is best match for colour{direction ? ` + ${direction} direction` : ""}
+                Hover for exact km · Sparkle = best match{direction ? ` heading ${direction}` : ""}
               </p>
             )}
           </motion.div>
