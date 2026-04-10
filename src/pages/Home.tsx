@@ -263,22 +263,30 @@ function ColourEstimator({ crossReferenced }: { crossReferenced: Set<string> }) 
         />
       </div>
 
-      {/* Label quick-jumps */}
+      {/* Label quick-jumps with ranges */}
       <div className="flex items-start gap-2">
         <span className="text-xs text-muted-foreground shrink-0 w-16 pt-1">Jump to:</span>
         <div className="flex flex-wrap gap-1.5">
-          {Object.entries(LABEL_PRESETS).map(([lbl, v]) => (
-            <button
-              key={lbl}
-              onClick={() => setSliderKm(v.km)}
-              className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors
-                ${activeLabel === lbl
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-muted/40 text-muted-foreground border-border hover:bg-muted hover:text-foreground"}`}
-            >
-              {lbl}
-            </button>
-          ))}
+          {Object.entries(LABEL_PRESETS).map(([lbl, v]) => {
+            const rangeStr = v.range[1] >= 20000
+              ? `${v.range[0].toLocaleString()}+ km`
+              : `${v.range[0].toLocaleString()}–${v.range[1].toLocaleString()} km`;
+            return (
+              <button
+                key={lbl}
+                onClick={() => setSliderKm(v.km)}
+                className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors flex flex-col items-center leading-tight
+                  ${activeLabel === lbl
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted/40 text-muted-foreground border-border hover:bg-muted hover:text-foreground"}`}
+              >
+                <span>{lbl}</span>
+                <span className={`text-[10px] font-normal ${activeLabel === lbl ? "opacity-80" : "opacity-60"}`}>
+                  {rangeStr}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
